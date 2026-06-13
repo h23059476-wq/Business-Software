@@ -1,0 +1,6 @@
+{
+  "name": "WorkSuite",
+  "description": "An all-in-one productivity suite featuring a word processor, spreadsheet editor, debit/deposit financial notebook, professional invoice maker, and a built-in AI assistant, built on Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

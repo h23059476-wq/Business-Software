@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "Document": {
+      "title": "Document",
+      "description": "Rich text word processor document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the document" },
+        "userId": { "type": "string", "description": "The firebase UID of the owner" },
+        "title": { "type": "string", "description": "Title of the word document" },
+        "content": { "type": "string", "description": "The rich content string (HTML or raw text)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" }
+      },
+      "required": ["id", "userId", "title", "content"]
+    },
+    "Spreadsheet": {
+      "title": "Spreadsheet",
+      "description": "Grid spreadsheet containing formulas and data matrix",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the spreadsheet" },
+        "userId": { "type": "string", "description": "The firebase UID of the owner" },
+        "title": { "type": "string", "description": "Title of the spreadsheet" },
+        "data": { "type": "string", "description": "Serialized grid-based spreadsheet state" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" }
+      },
+      "required": ["id", "userId", "title", "data"]
+    },
+    "Note": {
+      "title": "DebitDepositNote",
+      "description": "Quick financial note for quick records of debits or deposits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the note" },
+        "userId": { "type": "string", "description": "The firebase UID of the owner" },
+        "title": { "type": "string", "description": "Note title/subject" },
+        "type": { "type": "string", "enum": ["debit", "deposit"], "description": "Type of financial entry" },
+        "amount": { "type": "number", "description": "Numerical amount value" },
+        "description": { "type": "string", "description": "Transaction explanation details" },
+        "date": { "type": "string", "format": "date", "description": "Date of transaction (YYYY-MM-DD)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" }
+      },
+      "required": ["id", "userId", "title", "type", "amount", "date"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Professional invoice generated for clients with line items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the invoice" },
+        "userId": { "type": "string", "description": "The firebase UID of the issuer" },
+        "invoiceNumber": { "type": "string", "description": "Standard identifier e.g. INV-1001" },
+        "clientName": { "type": "string", "description": "Billed receiver name" },
+        "clientEmail": { "type": "string", "description": "Billed receiver email" },
+        "items": { "type": "string", "description": "JSON string representing serialized invoice items" },
+        "totals": { "type": "number", "description": "Total summary outstanding bills" },
+        "date": { "type": "string", "format": "date", "description": "Billed date" },
+        "dueDate": { "type": "string", "format": "date", "description": "Due date" },
+        "status": { "type": "string", "enum": ["draft", "sent", "paid", "overdue"], "description": "Status of invoice" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" }
+      },
+      "required": ["id", "userId", "invoiceNumber", "clientName", "clientEmail", "items", "totals", "date", "dueDate", "status"]
+    },
+    "AccountSummary": {
+      "title": "AccountSummary",
+      "description": "Accounts summary record containing serial number, name, department, credit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the account record" },
+        "userId": { "type": "string", "description": "The owner firebase UID" },
+        "sr": { "type": "string", "description": "Serial number/code" },
+        "name": { "type": "string", "description": "Account holder or employee name" },
+        "dept": { "type": "string", "description": "Department name" },
+        "credit": { "type": "number", "description": "Credit value or score" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" }
+      },
+      "required": ["userId", "sr", "name", "dept", "credit"]
+    },
+    "AiChatHistory": {
+      "title": "AiChatHistory",
+      "description": "User persistent chat history with the WorkSuite AI Assistant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the chat session" },
+        "userId": { "type": "string", "description": "The firebase UID of the owner" },
+        "messages": { "type": "string", "description": "JSON serialized chat messages array" },
+        "context": { "type": "string", "description": "Active tool context when chat occurred" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" }
+      },
+      "required": ["id", "userId", "messages", "context", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/documents/{documentId}": {
+      "schema": "Document",
+      "description": "User word documents"
+    },
+    "/spreadsheets/{spreadsheetId}": {
+      "schema": "Spreadsheet",
+      "description": "User grid spreadsheets"
+    },
+    "/notes/{noteId}": {
+      "schema": "Note",
+      "description": "User financial note debit deposits"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "User billing invoices"
+    },
+    "/accounts/{accountId}": {
+      "schema": "AccountSummary",
+      "description": "User account summaries"
+    },
+    "/ai_chats/{chatId}": {
+      "schema": "AiChatHistory",
+      "description": "User AI Assistant conversation histories"
+    }
+  }
+}

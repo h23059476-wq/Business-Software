@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidDocument(data) {
+      return data.userId is string && data.userId.size() <= 128
+          && data.title is string && data.title.size() <= 200
+          && data.content is string && data.content.size() <= 1048576;
+    }
+
+    function isValidSpreadsheet(data) {
+      return data.userId is string && data.userId.size() <= 128
+          && data.title is string && data.title.size() <= 200
+          && data.data is string && data.data.size() <= 1048576;
+    }
+
+    function isValidNote(data) {
+      return data.userId is string && data.userId.size() <= 128
+          && data.title is string && data.title.size() <= 200
+          && (data.type == 'debit' || data.type == 'deposit')
+          && data.amount is number && data.amount >= 0
+          && data.description is string && data.description.size() <= 2000
+          && data.date is string && data.date.size() == 10;
+    }
+
+    function isValidInvoice(data) {
+      return data.userId is string && data.userId.size() <= 128
+          && data.invoiceNumber is string && data.invoiceNumber.size() <= 50
+          && data.clientName is string && data.clientName.size() <= 128
+          && data.clientEmail is string && data.clientEmail.size() <= 128
+          && data.items is string && data.items.size() <= 100000
+          && data.totals is number && data.totals >= 0
+          && data.date is string && data.date.size() == 10
+          && data.dueDate is string && data.dueDate.size() == 10
+          && (data.status == 'draft' || data.status == 'sent' || data.status == 'paid' || data.status == 'overdue');
+    }
+
+    function isValidAccountSummary(data) {
+      return data.userId is string && data.userId.size() <= 128
+          && data.sr is string && data.sr.size() <= 100
+          && data.name is string && data.name.size() <= 200
+          && data.dept is string && data.dept.size() <= 200
+          && data.credit is number && data.credit >= -9999999999 && data.credit <= 9999999999;
+    }
+
+    function isValidAiChat(data) {
+      return data.userId is string && data.userId.size() <= 128
+          && data.messages is string && data.messages.size() <= 1048576
+          && data.context is string && data.context.size() <= 128
+          && data.createdAt is string && data.createdAt.size() <= 128
+          && data.updatedAt is string && data.updatedAt.size() <= 128;
+    }
+
+    match /documents/{documentId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(documentId) && isValidDocument(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(documentId) && isValidDocument(incoming()) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    match /spreadsheets/{spreadsheetId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(spreadsheetId) && isValidSpreadsheet(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(spreadsheetId) && isValidSpreadsheet(incoming()) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    match /notes/{noteId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(noteId) && isValidNote(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(noteId) && isValidNote(incoming()) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    match /invoices/{invoiceId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(invoiceId) && isValidInvoice(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(invoiceId) && isValidInvoice(incoming()) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    match /accounts/{accountId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(accountId) && isValidAccountSummary(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(accountId) && isValidAccountSummary(incoming()) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    match /ai_chats/{chatId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(chatId) && isValidAiChat(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(chatId) && isValidAiChat(incoming()) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+  }
+}
