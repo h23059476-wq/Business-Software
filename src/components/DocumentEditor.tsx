@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Plus, Save, AlignLeft, AlignCenter, AlignRight, 
   Bold, Italic, Underline, Heading1, Heading2, List, ListOrdered, 
-  Trash2, Download, Printer, Wand2, RefreshCw, CheckCircle2, FileDown 
+  Trash2, Download, Printer, Wand2, RefreshCw, CheckCircle2, FileDown,
+  ChevronDown, FolderOpen, Search
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
@@ -34,6 +35,14 @@ export default function DocumentEditor({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [docTitle, setDocTitle] = useState('');
+  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+
+  // Find & Replace States
+  const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
+  const [matchesCount, setMatchesCount] = useState<number | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -125,6 +134,13 @@ export default function DocumentEditor({
         await updateDoc(docRef, nextUpdated);
         // also local snapshot updates automatically through onSnapshot
         setSaveStatus('saved');
+        window.dispatchEvent(new CustomEvent('app-notification', {
+          detail: {
+            title: 'Document Saved',
+            message: `"${nextUpdated.title || activeDoc.title || 'Untitled Document'}" content sync complete.`,
+            type: 'save'
+          }
+        }));
       } catch (error) {
         setSaveStatus('error');
         handleFirestoreError(error, OperationType.UPDATE, `documents/${activeDoc.id}`);
@@ -150,6 +166,99 @@ export default function DocumentEditor({
     }
   };
 
+  // Traverses document text nodes to count find occurrences safely without breaking HTML tags
+  const countMatches = (findStr: string, caseSensitive: boolean = false): number => {
+    if (!editorRef.current || !findStr) return 0;
+    
+    let count = 0;
+    const walkAndCount = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.nodeValue || '';
+        const escaped = findStr.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const flags = caseSensitive ? 'g' : 'gi';
+        const regex = new RegExp(escaped, flags);
+        const matches = text.match(regex);
+        if (matches) {
+          count += matches.length;
+        }
+      } else {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          walkAndCount(node.childNodes[i]);
+        }
+      }
+    };
+
+    walkAndCount(editorRef.current);
+    return count;
+  };
+
+  // Traverses document text nodes to find and replace search query securely
+  const performFindAndReplace = (findStr: string, replaceStr: string, caseSensitive: boolean = false): number => {
+    if (!editorRef.current || !findStr) return 0;
+    
+    let matchesCount = 0;
+    const walkAndReplace = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.nodeValue || '';
+        let newText = '';
+        
+        const escaped = findStr.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const flags = caseSensitive ? 'g' : 'gi';
+        const regex = new RegExp(escaped, flags);
+        
+        const matches = text.match(regex);
+        if (matches) {
+          matchesCount += matches.length;
+          newText = text.replace(regex, replaceStr);
+        } else {
+          newText = text;
+        }
+        
+        if (node.nodeValue !== newText) {
+          node.nodeValue = newText;
+        }
+      } else {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          walkAndReplace(node.childNodes[i]);
+        }
+      }
+    };
+
+    walkAndReplace(editorRef.current);
+    
+    if (matchesCount > 0) {
+      handleEditorInput(); // Triggers debounced save with new HTML
+    }
+    
+    return matchesCount;
+  };
+
+  const handleReplaceAll = () => {
+    if (!findText) return;
+    const replacedNum = performFindAndReplace(findText, replaceText, matchCase);
+    
+    window.dispatchEvent(new CustomEvent('app-notification', {
+      detail: {
+        title: 'Document Bulk Update',
+        message: `Successfully replaced ${replacedNum} occurrences of "${findText}".`,
+        type: 'system'
+      }
+    }));
+    
+    // Refresh match count representation
+    setMatchesCount(0);
+  };
+
+  // Real-time matches counting hook
+  useEffect(() => {
+    if (isFindReplaceOpen && findText) {
+      const count = countMatches(findText, matchCase);
+      setMatchesCount(count);
+    } else {
+      setMatchesCount(null);
+    }
+  }, [findText, matchCase, isFindReplaceOpen, activeDoc?.id]);
+
   const createNewDoc = async () => {
     try {
       setLoading(true);
@@ -166,6 +275,13 @@ export default function DocumentEditor({
       setActiveDoc(docCreated);
       setDocTitle(docCreated.title);
       setLoading(false);
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Document Created',
+          message: `Created new document: "Untitled Document"`,
+          type: 'system'
+        }
+      }));
     } catch (e) {
       handleFirestoreError(e, OperationType.CREATE, 'documents');
     }
@@ -181,6 +297,13 @@ export default function DocumentEditor({
         setActiveDoc(null);
         setDocTitle('');
       }
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Document Deleted',
+          message: `Successfully removed document from cloud storage.`,
+          type: 'system'
+        }
+      }));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `documents/${id}`);
     }
@@ -206,26 +329,107 @@ export default function DocumentEditor({
     link.click();
   };
 
+  const downloadDocCSV = () => {
+    if (!activeDoc || !editorRef.current) return;
+    const plaintext = editorRef.current.innerText;
+    const lines = plaintext.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const csvContent = lines.map(line => `"${line.replace(/"/g, '""')}"`).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${activeDoc.title || 'document'}.csv`;
+    link.click();
+  };
+
   const printDoc = () => {
     if (!editorRef.current) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${docTitle}</title>
-          <style>
-            body { font-family: sans-serif; padding: 40px; line-height: 1.6; }
-            h1 { text-align: center; }
-          </style>
-        </head>
-        <body>
-          ${editorRef.current.innerHTML}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+    
+    // Check if printing is supported and use a hidden iframe for safe, popup-blocker resistant printing inside sandboxed iframes
+    let printIframe = document.getElementById('print-iframe') as HTMLIFrameElement;
+    if (!printIframe) {
+      printIframe = document.createElement('iframe');
+      printIframe.id = 'print-iframe';
+      printIframe.style.position = 'absolute';
+      printIframe.style.top = '-9999px';
+      printIframe.style.left = '-9999px';
+      printIframe.style.width = '0px';
+      printIframe.style.height = '0px';
+      printIframe.style.border = 'none';
+      document.body.appendChild(printIframe);
+    }
+
+    const doc = printIframe.contentDocument || printIframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(`
+        <html>
+          <head>
+            <title>${docTitle || 'Document'}</title>
+            <style>
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                padding: 40px; 
+                line-height: 1.6; 
+                color: #000000; 
+                background-color: #ffffff; 
+              }
+              h1 { 
+                text-align: center; 
+                font-size: 24px; 
+                margin-bottom: 24px; 
+                border-b: 1px solid #e2e8f0; 
+                padding-bottom: 12px; 
+              }
+              img { max-width: 100%; height: auto; }
+              table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+              th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+              th { background-color: #f1f5f9; }
+            </style>
+          </head>
+          <body>
+            <h1>${docTitle || 'Untitled Document'}</h1>
+            <div>${editorRef.current.innerHTML}</div>
+          </body>
+        </html>
+      `);
+      doc.close();
+
+      setTimeout(() => {
+        try {
+          printIframe.contentWindow?.focus();
+          printIframe.contentWindow?.print();
+        } catch (e) {
+          console.error("Iframe print failed, falling back to window.print", e);
+          window.print();
+        }
+      }, 300);
+    } else {
+      // Fallback to separate window if browser restrictions prevent iframe documents
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        window.print();
+        return;
+      }
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>${docTitle}</title>
+            <style>
+              body { font-family: sans-serif; padding: 40px; line-height: 1.6; }
+              h1 { text-align: center; }
+            </style>
+          </head>
+          <body>
+            <h1>${docTitle}</h1>
+            ${editorRef.current.innerHTML}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    }
   };
 
   const generatePDFobj = (): jsPDF => {
@@ -442,7 +646,92 @@ export default function DocumentEditor({
 
       {/* Editor Main Canvas */}
       {activeDoc ? (
-        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900">
+        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 relative">
+          
+          {/* Find and Replace Floating Panel */}
+          {isFindReplaceOpen && (
+            <div className="absolute top-36 right-8 z-20 w-80 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-850 p-4 animate-fade-in font-sans">
+              <div className="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">
+                <div className="flex items-center gap-1.5">
+                  <Search className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <span className="text-xs font-extrabold text-slate-850 dark:text-slate-200 tracking-wider uppercase">Find & Replace</span>
+                </div>
+                <button 
+                  onClick={() => setIsFindReplaceOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-250 transition p-1 text-base leading-none cursor-pointer"
+                >
+                  &times;
+                </button>
+              </div>
+              
+              <div className="space-y-3.5">
+                {/* Search Input */}
+                <div>
+                  <label className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 tracking-wider">Find Text</label>
+                  <input 
+                    type="text"
+                    value={findText}
+                    onChange={(e) => setFindText(e.target.value)}
+                    placeholder="Enter search phrase..."
+                    className="w-full mt-1 px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:text-slate-100 placeholder:text-slate-400/80"
+                  />
+                  {findText ? (
+                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono mt-1 font-bold">
+                      {matchesCount === 0 ? 'No matches found' : `${matchesCount} ${matchesCount === 1 ? 'match' : 'matches'} found`}
+                    </p>
+                  ) : null}
+                </div>
+
+                {/* Replace Input */}
+                <div>
+                  <label className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 tracking-wider">Replace With</label>
+                  <input 
+                    type="text"
+                    value={replaceText}
+                    onChange={(e) => setReplaceText(e.target.value)}
+                    placeholder="Enter replacement..."
+                    className="w-full mt-1 px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:text-slate-100 placeholder:text-slate-400/80"
+                  />
+                </div>
+
+                {/* Options */}
+                <div className="flex items-center gap-2 py-0.5">
+                  <input 
+                    type="checkbox"
+                    id="matchCaseCheckbox"
+                    checked={matchCase}
+                    onChange={(e) => setMatchCase(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700 bg-transparent cursor-pointer"
+                  />
+                  <label htmlFor="matchCaseCheckbox" className="text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none font-bold">
+                    Match Case (Case Sensitive)
+                  </label>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-805">
+                  <button
+                    onClick={() => {
+                      const count = countMatches(findText, matchCase);
+                      setMatchesCount(count);
+                    }}
+                    disabled={!findText}
+                    className="px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-755 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg font-bold text-slate-600 dark:text-slate-400 transition cursor-pointer disabled:opacity-40"
+                  >
+                    Find
+                  </button>
+                  <button
+                    onClick={handleReplaceAll}
+                    disabled={!findText || matchesCount === 0}
+                    className="px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-extrabold shadow-xs active:scale-95 transition cursor-pointer disabled:opacity-40"
+                  >
+                    Replace All
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Header Title Editor */}
           <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/10 dark:bg-slate-950/15">
             <input
@@ -471,28 +760,66 @@ export default function DocumentEditor({
                 )}
               </div>
 
-               <div className="flex items-center gap-1">
-                <button 
-                  onClick={downloadDoc}
-                  className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-850 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
-                  title="Download TXT"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-                <button 
-                  onClick={() => setIsPreviewOpen(true)}
-                  className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
-                  title="PDF Preview & Export"
-                >
-                  <FileDown className="h-4 w-4" />
-                </button>
-                <button 
-                  onClick={printDoc}
-                  className="p-1.5 text-slate-500 dark:text-slate-405 hover:text-slate-850 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
-                  title="Print Document"
-                >
-                  <Printer className="h-4 w-4" />
-                </button>
+               <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button
+                    onClick={() => setIsFileMenuOpen(!isFileMenuOpen)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/80 font-medium rounded-lg shadow-xs border border-indigo-100 dark:border-indigo-900/40 transition cursor-pointer text-xs"
+                    title="File Export Options"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    <span>File</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  {isFileMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsFileMenuOpen(false)} />
+                      <div className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 py-1.5 z-20 font-sans">
+                        <button
+                          onClick={() => {
+                            setIsFileMenuOpen(false);
+                            setIsPreviewOpen(true);
+                          }}
+                          className="flex items-center gap-2.5 w-full px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-left transition cursor-pointer"
+                        >
+                          <FileDown className="h-4 w-4 text-rose-500" />
+                          <span>Export PDF</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsFileMenuOpen(false);
+                            downloadDocCSV();
+                          }}
+                          className="flex items-center gap-2.5 w-full px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-left transition cursor-pointer"
+                        >
+                          <Download className="h-4 w-4 text-emerald-500" />
+                          <span>Export CSV</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsFileMenuOpen(false);
+                            downloadDoc();
+                          }}
+                          className="flex items-center gap-2.5 w-full px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-left transition cursor-pointer"
+                        >
+                          <FileText className="h-4 w-4 text-blue-500" />
+                          <span>Export Text / Markdown</span>
+                        </button>
+                        <div className="border-t border-slate-100 dark:border-slate-750 my-1"></div>
+                        <button
+                          onClick={() => {
+                            setIsFileMenuOpen(false);
+                            printDoc();
+                          }}
+                          className="flex items-center gap-2.5 w-full px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-left transition cursor-pointer"
+                        >
+                          <Printer className="h-4 w-4 text-slate-500" />
+                          <span>Print Document</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -578,6 +905,19 @@ export default function DocumentEditor({
               title="Align Right"
             >
               <AlignRight className="h-4 w-4" />
+            </button>
+
+            <button
+              onClick={() => setIsFindReplaceOpen(!isFindReplaceOpen)}
+              className={`p-1.5 rounded transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                isFindReplaceOpen 
+                  ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-750 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800' 
+                  : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-450 hover:text-slate-900 dark:hover:text-slate-100 border border-transparent'
+              }`}
+              title="Find and Replace Text"
+            >
+              <Search className="h-4 w-4" />
+              <span>Find & Replace</span>
             </button>
 
             <button

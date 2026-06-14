@@ -16,12 +16,16 @@ interface InvoiceMakerProps {
   userId: string;
   onSelectContentForAi?: (text: string) => void;
   activeInvoiceId?: string | null;
+  initialAdoptedText?: string | null;
+  clearAdoptedText?: () => void;
 }
 
 export default function InvoiceMaker({ 
   userId, 
   onSelectContentForAi,
-  activeInvoiceId
+  activeInvoiceId,
+  initialAdoptedText,
+  clearAdoptedText
 }: InvoiceMakerProps) {
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [activeInvoice, setActiveInvoice] = useState<InvoiceData | null>(null);
@@ -40,6 +44,61 @@ export default function InvoiceMaker({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // AI items suggestions queue state
+  const [aiInvoiceItems, setAiInvoiceItems] = useState<InvoiceItem[]>([]);
+
+  useEffect(() => {
+    if (!initialAdoptedText) {
+      setAiInvoiceItems([]);
+      return;
+    }
+
+    try {
+      const rx = /\[INVOICE_ITEM:\s*description="([^"]+)"\s*price="([^"]+)"\s*quantity="([^"]+)"\]/g;
+      let match;
+      const parsedItems: InvoiceItem[] = [];
+      
+      while ((match = rx.exec(initialAdoptedText)) !== null) {
+        const desc = match[1];
+        const priceNum = parseFloat(match[2]) || 0;
+        const qtyNum = parseInt(match[3], 10) || 1;
+        
+        parsedItems.push({
+          description: desc,
+          price: priceNum,
+          quantity: qtyNum
+        });
+      }
+
+      setAiInvoiceItems(parsedItems);
+    } catch (err) {
+      console.error("Failed to parse invoice items from AI text draft", err);
+    }
+  }, [initialAdoptedText]);
+
+  const handleApplyAiInvoiceItems = () => {
+    if (!activeInvoice || aiInvoiceItems.length === 0) return;
+
+    const nextItems = [...items, ...aiInvoiceItems];
+    setItems(nextItems);
+    
+    // Save changes
+    triggerDebouncedSave({
+      items: JSON.stringify(nextItems)
+    });
+
+    window.dispatchEvent(new CustomEvent('app-notification', {
+      detail: {
+        title: 'Billing Items Synced',
+        message: `Successfully appended ${aiInvoiceItems.length} billing items.`,
+        type: 'success'
+      }
+    }));
+
+    setAiInvoiceItems([]);
+    if (clearAdoptedText) clearAdoptedText();
+  };
 
   // Read list from Firestore
   useEffect(() => {
@@ -121,6 +180,13 @@ export default function InvoiceMaker({
 
         await updateDoc(docRef, nextUpdated);
         setSaveStatus('saved');
+        window.dispatchEvent(new CustomEvent('app-notification', {
+          detail: {
+            title: 'Invoice Saved',
+            message: `Invoice ${activeInvoice.invoiceNumber || 'sheet'} updated and saved successfully.`,
+            type: 'save'
+          }
+        }));
       } catch (error) {
         setSaveStatus('error');
         handleFirestoreError(error, OperationType.UPDATE, `invoices/${activeInvoice.id}`);
@@ -186,6 +252,13 @@ export default function InvoiceMaker({
       const created = { id: docRef.id, ...newInvoiceObj } as InvoiceData;
       setActiveInvoice(created);
       setLoading(false);
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Invoice Drafted',
+          message: `Created invoice draft ${created.invoiceNumber} for ${created.clientName}.`,
+          type: 'system'
+        }
+      }));
     } catch (e) {
       handleFirestoreError(e, OperationType.CREATE, 'invoices');
     }
@@ -200,6 +273,13 @@ export default function InvoiceMaker({
       if (activeInvoice?.id === id) {
         setActiveInvoice(null);
       }
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Invoice Deleted',
+          message: `Invoice draft has been successfully removed.`,
+          type: 'system'
+        }
+      }));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `invoices/${id}`);
     }
@@ -614,6 +694,47 @@ Thank you for your business!
               </div>
             </div>
           </div>
+
+          {/* AI Invoice items suggestions */}
+          {aiInvoiceItems.length > 0 && (
+            <div className="mx-6 mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in text-slate-800">
+              <div className="flex items-start gap-3">
+                <Receipt className="h-5.5 w-5.5 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                <div>
+                  <p className="font-bold text-xs text-slate-900">AI Billing Items Import suggestions found</p>
+                  <p className="text-[11px] text-slate-600 mt-1">
+                    Detected <span className="font-bold text-amber-700">{aiInvoiceItems.length} billing items</span> from log analysis. Would you like to append them to invoice <span className="font-mono font-bold">{invoiceNumber}</span>?
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                    {aiInvoiceItems.map((item, idx) => (
+                      <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white/80 border border-amber-200 rounded text-[10px] font-medium text-slate-700">
+                        {item.description} <span className="text-slate-400 font-normal">({item.quantity} x ${item.price})</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleApplyAiInvoiceItems}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition cursor-pointer"
+                >
+                  Apply Invoice Inject
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiInvoiceItems([]);
+                    if (clearAdoptedText) clearAdoptedText();
+                  }}
+                  className="px-3 py-1.5 border border-slate-200 hover:bg-slate-100/85 text-slate-500 bg-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                >
+                  Ignore
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Form and items list */}
           <div className="flex-1 overflow-y-auto p-8 space-y-6 max-w-5xl">

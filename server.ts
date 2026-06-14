@@ -26,7 +26,7 @@ async function startServer() {
   // API Route for AI Assistant
   app.post("/api/ai/assistant", async (req, res) => {
     try {
-      const { prompt, context, persona } = req.body;
+      const { prompt, context, persona, fileData } = req.body;
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
       }
@@ -49,16 +49,44 @@ Style directive: Always make your text feel professional, crisp, and beautifully
       } else if (persona === 'analyst') {
         systemInstruction = `You are the WorkSuite Grid Excel and Spreadsheet Data Analyst. 
 Your specialized focus is creating and structuring tabular data rows, CSV grids, budget templates, data matrices, and writing complex functions/formulas (such as SUM, AVERAGE, VLOOKUP, COUNTIF, etc.).
-When generating mock data or layouts, always structure them as beautifully aligned markdown tables or CSV blocks.
+When generating spreadsheet layout cells or importing CSV/device lists, always structure them as beautifully aligned markdown tables.
+Additionally, you MUST output a raw CSV data bracket at the end if you generate tabular rows (which the application can automatically inject into the grid cells):
+[CSV_IMPORT]
+Column1,Column2,Column3
+value1,value2,value3
+[/CSV_IMPORT]
 Keep explanations of formulas crisp, structured, and mathematical.`;
       } else if (persona === 'accounting') {
         systemInstruction = `You are the WorkSuite Financial Accounting and billing Copilot. 
 Your specialized expertise is cash transaction logs, ledger deposit and debit balance accounts, expense tracking lists, drafting professional client billing descriptions, invoice item arrays, and polite but assertive payment reminders.
 Use clear lists of line items, precise descriptions, and structured double-entry ledger summaries. 
-Your tone should be authoritative, clear, and highly organized regarding transaction recording.`;
+Your tone should be authoritative, clear, and highly organized regarding transaction recording.
+
+When suggesting credit/debit records, write a special log container at the bottom/top of your response so the user can import it automatically:
+[TX_RECORD: title="Record Title" type="deposit|debit" amount="value" description="short explanation"]
+
+When advising on invoice line items or billing items, write a special item tag so the user can add it to their client billing sheet:
+[INVOICE_ITEM: description="Software Consulting Services" price="150" quantity="10"]`;
       }
 
-      const userMessage = context ? `Context of current tool: ${context}\n\nUser request: ${prompt}` : prompt;
+      // Build richer context if file data is attached from device
+      let userMessage = "";
+      if (fileData) {
+        userMessage += `[USER HAS IMPORTED DATA FROM THEIR DEVICE]\n`;
+        userMessage += `Imported File Name: ${fileData.name}\n`;
+        userMessage += `File Size: ${fileData.size} bytes\n`;
+        userMessage += `File MIME Type: ${fileData.type}\n\n`;
+        userMessage += `---- BEGIN ATTACHED DEVICE FILE CONTENT ----\n`;
+        userMessage += `${fileData.content}\n`;
+        userMessage += `---- END ATTACHED DEVICE FILE CONTENT ----\n\n`;
+        userMessage += `The user is importing this file from their device. Please analyze this file content, handle its records, and answer the prompt below. If spreadsheets, notes, or invoices are active, output the corresponding [CSV_IMPORT], [TX_RECORD], or [INVOICE_ITEM] tags so the system can absorb the records natively.\n\n`;
+      }
+
+      if (context) {
+        userMessage += `Current View Context: ${context}\n\n`;
+      }
+
+      userMessage += `User Message/Prompt: ${prompt}`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",

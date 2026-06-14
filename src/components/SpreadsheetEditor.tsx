@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Grid, Plus, Save, Trash2, Download, CheckCircle2, RefreshCw,
-  PlusCircle, MinusCircle, FileSpreadsheet, Sparkles, FileDown 
+  PlusCircle, MinusCircle, FileSpreadsheet, Sparkles, FileDown,
+  ChevronDown, FolderOpen
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
@@ -16,6 +17,8 @@ interface SpreadsheetEditorProps {
   userId: string;
   onSelectContentForAi?: (text: string) => void;
   activeSheetId?: string | null;
+  initialAdoptedText?: string | null;
+  clearAdoptedText?: () => void;
 }
 
 type CellGrid = { [cellId: string]: string }; // e.g. "A1": "100", "B1": "=SUM(A1:A3)"
@@ -23,7 +26,9 @@ type CellGrid = { [cellId: string]: string }; // e.g. "A1": "100", "B1": "=SUM(A
 export default function SpreadsheetEditor({ 
   userId, 
   onSelectContentForAi,
-  activeSheetId
+  activeSheetId,
+  initialAdoptedText,
+  clearAdoptedText
 }: SpreadsheetEditorProps) {
   const [spreadsheets, setSpreadsheets] = useState<SpreadsheetData[]>([]);
   const [activeSheet, setActiveSheet] = useState<SpreadsheetData | null>(null);
@@ -31,6 +36,7 @@ export default function SpreadsheetEditor({
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [sheetTitle, setSheetTitle] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
 
   // Grid dimensions
   const [cols, setCols] = useState<string[]>(['A', 'B', 'C', 'D', 'E', 'F', 'G']);
@@ -40,6 +46,112 @@ export default function SpreadsheetEditor({
   const [cellInput, setCellInput] = useState<string>('');
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // AI Spreadsheet data parsed imports state
+  const [aiImportTable, setAiImportTable] = useState<{ headers: string[], rows: string[][] } | null>(null);
+
+  useEffect(() => {
+    if (!initialAdoptedText) {
+      setAiImportTable(null);
+      return;
+    }
+
+    try {
+      // Find CSV code brackets or parse markdown fallback
+      let csvData = "";
+      const csvMatch = initialAdoptedText.match(/\[CSV_IMPORT\]([\s\S]*?)\[\/CSV_IMPORT\]/);
+      if (csvMatch && csvMatch[1]) {
+        csvData = csvMatch[1].trim();
+      } else {
+        // Fallback: parse markdown tables
+        const lines = initialAdoptedText.split('\n');
+        const tableLines = lines.filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
+        if (tableLines.length > 1) {
+          // Parse markdown structure
+          const parsedRows = tableLines
+            .map(line => line.split('|').map(cell => cell.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1))
+            .filter(r => r.length > 0 && !r.every(cell => cell.startsWith('-'))); // skip table lines
+          
+          if (parsedRows.length > 0) {
+            const headers = parsedRows[0];
+            const dataRows = parsedRows.slice(1);
+            setAiImportTable({ headers, rows: dataRows });
+            return;
+          }
+        }
+      }
+
+      if (csvData) {
+        const lines = csvData.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length > 0) {
+          const headers = lines[0].split(',').map(h => h.trim());
+          const rows = lines.slice(1).map(row => row.split(',').map(c => c.trim()));
+          setAiImportTable({ headers, rows });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to parse adopted text into spreadsheet grid map", err);
+    }
+  }, [initialAdoptedText]);
+
+  const handleApplyAiImport = () => {
+    if (!activeSheet || !aiImportTable) return;
+    
+    let startRow = 1;
+    let startColIdx = 0; // Col A
+    
+    if (activeCell) {
+      const match = activeCell.match(/^([A-Z]+)(\d+)$/);
+      if (match) {
+        const colStr = match[1];
+        startRow = parseInt(match[2], 10);
+        
+        let idx = 0;
+        for (let i = 0; i < colStr.length; i++) {
+          idx = idx * 26 + (colStr.charCodeAt(i) - 64);
+        }
+        startColIdx = idx - 1;
+      }
+    }
+    
+    const newGrid = { ...grid };
+    
+    // Fill headers row
+    aiImportTable.headers.forEach((header, colOffset) => {
+      const targetColIdx = startColIdx + colOffset;
+      if (targetColIdx < cols.length) {
+        const colChar = cols[targetColIdx];
+        const cellId = `${colChar}${startRow}`;
+        newGrid[cellId] = header;
+      }
+    });
+    
+    // Fill content rows
+    aiImportTable.rows.forEach((row, rowOffset) => {
+      row.forEach((cellVal, colOffset) => {
+        const targetColIdx = startColIdx + colOffset;
+        if (targetColIdx < cols.length) {
+          const colChar = cols[targetColIdx];
+          const cellId = `${colChar}${startRow + 1 + rowOffset}`;
+          newGrid[cellId] = cellVal;
+        }
+      });
+    });
+    
+    setGrid(newGrid);
+    triggerDebouncedSave({ data: JSON.stringify({ grid: newGrid, cols, rowsCount }) });
+    
+    window.dispatchEvent(new CustomEvent('app-notification', {
+      detail: {
+        title: 'Device Data Injected',
+        message: `Successfully structured and loaded ${aiImportTable.rows.length} spreadsheet records into sheet cells.`,
+        type: 'success'
+      }
+    }));
+    
+    setAiImportTable(null);
+    if (clearAdoptedText) clearAdoptedText();
+  };
 
   // Read list from Firestore
   useEffect(() => {
@@ -117,6 +229,13 @@ export default function SpreadsheetEditor({
 
         await updateDoc(docRef, nextUpdated);
         setSaveStatus('saved');
+        window.dispatchEvent(new CustomEvent('app-notification', {
+          detail: {
+            title: 'Spreadsheet Saved',
+            message: `"${nextUpdated.title || activeSheet.title || 'Untitled Spreadsheet'}" automatic sync complete.`,
+            type: 'save'
+          }
+        }));
       } catch (error) {
         setSaveStatus('error');
         handleFirestoreError(error, OperationType.UPDATE, `spreadsheets/${activeSheet.id}`);
@@ -152,6 +271,13 @@ export default function SpreadsheetEditor({
       setActiveSheet(created);
       setSheetTitle(created.title);
       setLoading(false);
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Spreadsheet Created',
+          message: `Created new spreadsheet: "${created.title}"`,
+          type: 'system'
+        }
+      }));
     } catch (e) {
       handleFirestoreError(e, OperationType.CREATE, 'spreadsheets');
     }
@@ -167,6 +293,13 @@ export default function SpreadsheetEditor({
         setActiveSheet(null);
         setSheetTitle('');
       }
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Spreadsheet Deleted',
+          message: `Successfully deleted spreadsheet from cloud storage.`,
+          type: 'system'
+        }
+      }));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `spreadsheets/${id}`);
     }
@@ -642,23 +775,44 @@ export default function SpreadsheetEditor({
                 )}
               </div>
 
-              <button
-                onClick={() => setIsPreviewOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-lg shadow-sm transition mr-1"
-                title="PDF Preview & Export"
-              >
-                <FileDown className="h-4 w-4" />
-                <span>Export PDF</span>
-              </button>
-
-              <button
-                onClick={downloadCSV}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-150 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg shadow-sm transition"
-                title="Download CSV"
-              >
-                <Download className="h-4 w-4" />
-                <span>Export CSV</span>
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setIsFileMenuOpen(!isFileMenuOpen)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/80 font-medium rounded-lg shadow-xs border border-indigo-100 dark:border-indigo-900/40 transition cursor-pointer text-xs"
+                  title="File Export Options"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  <span>File</span>
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+                {isFileMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsFileMenuOpen(false)} />
+                    <div className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 py-1.5 z-20 font-sans">
+                      <button
+                        onClick={() => {
+                          setIsFileMenuOpen(false);
+                          setIsPreviewOpen(true);
+                        }}
+                        className="flex items-center gap-2.5 w-full px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-left transition cursor-pointer"
+                      >
+                        <FileDown className="h-4 w-4 text-rose-500" />
+                        <span>Export PDF</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsFileMenuOpen(false);
+                          downloadCSV();
+                        }}
+                        className="flex items-center gap-2.5 w-full px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-left transition cursor-pointer"
+                      >
+                        <Download className="h-4 w-4 text-emerald-500" />
+                        <span>Export CSV</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -676,6 +830,40 @@ export default function SpreadsheetEditor({
               className="flex-1 border border-slate-200 rounded px-3 py-1.5 focus:outline-none focus:border-indigo-300 focus:ring-0 font-mono text-xs bg-white transition"
             />
           </div>
+
+          {/* AI Cell Import Suggestions */}
+          {aiImportTable && (
+            <div className="mx-6 my-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in text-slate-800">
+              <div className="flex items-start gap-3">
+                <Sparkles className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5 animate-pulse" />
+                <div>
+                  <p className="font-bold text-xs text-slate-900">AI Table Import suggestion</p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Detected <span className="font-bold">{aiImportTable.rows.length} rows</span> to load into spreadsheet starting at column-head <span className="font-bold text-emerald-700">{activeCell || "A1"}</span>.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleApplyAiImport}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition cursor-pointer"
+                >
+                  Apply Cell Import
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiImportTable(null);
+                    if (clearAdoptedText) clearAdoptedText();
+                  }}
+                  className="px-3 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold transition cursor-pointer"
+                >
+                  Ignore
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Table Operations Grid */}
           <div className="px-6 py-2 border-b border-slate-200 bg-slate-100/30 flex items-center gap-3 text-xs text-slate-600 font-bold select-none">

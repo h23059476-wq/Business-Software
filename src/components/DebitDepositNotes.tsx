@@ -14,15 +14,84 @@ interface DebitDepositNotesProps {
   userId: string;
   onSelectContentForAi?: (text: string) => void;
   activeNoteId?: string | null;
+  initialAdoptedText?: string | null;
+  clearAdoptedText?: () => void;
 }
 
 export default function DebitDepositNotes({ 
   userId, 
   onSelectContentForAi, 
-  activeNoteId 
+  activeNoteId,
+  initialAdoptedText,
+  clearAdoptedText
 }: DebitDepositNotesProps) {
   const [notes, setNotes] = useState<NoteData[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // AI Suggestions import queue state
+  const [aiTxQueue, setAiTxQueue] = useState<Omit<NoteData, 'id' | 'createdAt'>[]>([]);
+
+  useEffect(() => {
+    if (!initialAdoptedText) {
+      setAiTxQueue([]);
+      return;
+    }
+
+    try {
+      const rx = /\[TX_RECORD:\s*title="([^"]+)"\s*type="([^"]+)"\s*amount="([^"]+)"\s*description="([^"]+)"\]/g;
+      let match;
+      const parsedRecords: Omit<NoteData, 'id' | 'createdAt'>[] = [];
+      
+      while ((match = rx.exec(initialAdoptedText)) !== null) {
+        const titleStr = match[1];
+        const typeStr = (match[2] === 'debit' || match[2] === 'deposit') ? match[2] : 'deposit';
+        const amountNum = parseFloat(match[3]) || 0;
+        const descStr = match[4];
+        
+        parsedRecords.push({
+          userId,
+          title: titleStr,
+          type: typeStr as 'deposit' | 'debit',
+          amount: amountNum,
+          description: descStr,
+          date: new Date().toISOString().substring(0, 10),
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      setAiTxQueue(parsedRecords);
+    } catch (err) {
+      console.error("Failed to parse ledger records", err);
+    }
+  }, [initialAdoptedText]);
+
+  const handleImportAllRecords = async () => {
+    if (aiTxQueue.length === 0) return;
+    setSubmitting(true);
+    try {
+      for (const rx of aiTxQueue) {
+        await addDoc(collection(db, 'notes'), {
+          ...rx,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Account Ledger Synced',
+          message: `Successfully loaded and saved ${aiTxQueue.length} entries.`,
+          type: 'success'
+        }
+      }));
+
+      setAiTxQueue([]);
+      if (clearAdoptedText) clearAdoptedText();
+    } catch (e) {
+      handleFirestoreError(e, OperationType.CREATE, 'notes');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Scroll to active note if selected from command palette
   useEffect(() => {
@@ -104,6 +173,13 @@ export default function DebitDepositNotes({
       };
 
       await addDoc(collection(db, 'notes'), newNote);
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Ledger Record Logged',
+          message: `${type === 'deposit' ? 'Deposit' : 'Debit'} of $${newNote.amount.toLocaleString()} logged: "${newNote.title}"`,
+          type: 'save'
+        }
+      }));
       
       // Reset forms
       setTitle('');
@@ -122,6 +198,13 @@ export default function DebitDepositNotes({
 
     try {
       await deleteDoc(doc(db, 'notes', id));
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Ledger Record Deleted',
+          message: `The transaction has been successfully deleted from the ledger database.`,
+          type: 'system'
+        }
+      }));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `notes/${id}`);
     }
@@ -134,6 +217,52 @@ export default function DebitDepositNotes({
         <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Ledger & Transactions</h2>
         <p className="text-slate-500 mt-1">Log financial transactions, draft work group expenses, and audit active balances securely.</p>
       </div>
+
+      {/* AI Transaction Import Queue suggestion */}
+      {aiTxQueue.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm animate-fade-in text-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <BookOpen className="h-5.5 w-5.5 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+              <div>
+                <p className="font-bold text-sm text-slate-900">AI Ledger Imports ready</p>
+                <p className="text-xs text-slate-600 mt-1">
+                  We parsed <span className="font-bold text-amber-700">{aiTxQueue.length} transaction records</span> from your imported device logs. Would you like to append them permanently to your cash logs?
+                </p>
+                {/* List items representation */}
+                <div className="mt-3 flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-1">
+                  {aiTxQueue.map((item, idx) => (
+                    <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/80 border border-amber-200 rounded-lg text-[11px] font-medium shadow-2xs">
+                      <span className={`w-1.5 h-1.5 rounded-full ${item.type === 'deposit' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      <span className="font-bold text-slate-800">{item.title}</span> 
+                      <span className="text-slate-400 font-mono">(${item.amount})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex sm:flex-col gap-2 shrink-0 md:items-end">
+              <button
+                type="button"
+                onClick={handleImportAllRecords}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition cursor-pointer"
+              >
+                Import All ({aiTxQueue.length})
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-100/80 rounded-xl text-xs font-semibold bg-white text-slate-600 transition cursor-pointer"
+                onClick={() => {
+                  setAiTxQueue([]);
+                  if (clearAdoptedText) clearAdoptedText();
+                }}
+              >
+                Ignore
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ledger Cards Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

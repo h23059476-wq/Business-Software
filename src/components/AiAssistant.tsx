@@ -1,11 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, Sparkles, Loader2, Copy, Check, MessageSquare, 
-  Trash2, FileText, Grid, Receipt, RefreshCw, CloudLightning, CloudCheck 
+  Trash2, FileText, Grid, Receipt, RefreshCw, CloudLightning, CloudCheck,
+  Paperclip, X, FileUp
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
 import { collection, query, where, getDocs, setDoc, doc, onSnapshot } from 'firebase/firestore';
+
+interface AttachedFile {
+  name: string;
+  type: string;
+  content: string;
+  size: number;
+}
 
 interface AiAssistantProps {
   activeContext: string; // 'dashboard' | 'documents' | 'spreadsheet' | 'notes' | 'invoices' | 'settings'
@@ -20,6 +28,11 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
   const [persona, setPersona] = useState<PersonaType>('universal');
   const [docId, setDocId] = useState<string | null>(null);
   const [dbSync, setDbSync] = useState<'connected' | 'offline' | 'loading'>('offline');
+  
+  // File upload state & handlers
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Create system initial message
   const getInitialMessage = (currentPersona: PersonaType) => {
@@ -148,19 +161,94 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setAttachedFile({
+        name: file.name,
+        type: file.type || 'text/plain',
+        content,
+        size: file.size
+      });
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Device File Loaded',
+          message: `${file.name} successfully imported. Ask Gemini to parse it!`,
+          type: 'success'
+        }
+      }));
+    };
+    reader.onerror = () => {
+      alert("Failed to read selection from device.");
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input selection
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+  
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        setAttachedFile({
+          name: file.name,
+          type: file.type || 'text/plain',
+          content,
+          size: file.size
+        });
+        window.dispatchEvent(new CustomEvent('app-notification', {
+          detail: {
+            title: 'Device Data Dropped',
+            message: `${file.name} successfully pre-parsed as AI input context.`,
+            type: 'success'
+          }
+        }));
+      };
+      reader.onerror = () => {
+        alert("Failed to read dropped file.");
+      };
+      reader.readAsText(file);
+    }
+  };
+
   const handleSend = async (e?: React.FormEvent, customUserPrompt?: string) => {
     if (e) e.preventDefault();
     const promptToSend = customUserPrompt || prompt;
-    if (!promptToSend.trim() || loading) return;
+    if (!promptToSend.trim() && !attachedFile) return;
 
     // Reset prompt if it is standard input
     if (!customUserPrompt) {
       setPrompt('');
     }
 
-    const nextMessages = [...messages, { role: 'user' as const, content: promptToSend }];
+    const fileDetailsText = attachedFile ? `\n\n[Imported Device File: ${attachedFile.name} (${Math.round(attachedFile.size / 1024 * 10) / 10} KB)]` : '';
+    const finalPrompt = promptToSend.trim() || `Analyze the imported file data: ${attachedFile?.name}`;
+    const nextMessages = [...messages, { role: 'user' as const, content: `${finalPrompt}${fileDetailsText}` }];
     setMessages(nextMessages);
     setLoading(true);
+
+    const filePayload = attachedFile ? { ...attachedFile } : undefined;
+    setAttachedFile(null); // Clear active attachment state
 
     // Save user's question first
     await saveChatHistory(nextMessages);
@@ -170,9 +258,10 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: promptToSend,
+          prompt: finalPrompt,
           context: `Current active view is: ${activeContext}.`,
-          persona: persona
+          persona: persona,
+          fileData: filePayload
         })
       });
 
@@ -186,6 +275,14 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
       
       setMessages(updatedMessages);
       await saveChatHistory(updatedMessages);
+
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'AI Companion Replied',
+          message: aiReply.length > 80 ? `${aiReply.substring(0, 80)}...` : aiReply,
+          type: 'ai'
+        }
+      }));
     } catch (err: any) {
       const errorMsg = `⚠️ Error occurred: ${err.message || 'Failed to reach AI Backend'}`;
       const updatedMessages = [...nextMessages, { role: 'assistant' as const, content: errorMsg }];
@@ -281,7 +378,22 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
   const themeColors = getPersonaTheme();
 
   return (
-    <div className={`flex flex-col h-full ${themeColors.bg} text-white transition-colors duration-300`} id="ai-assistant-container">
+    <div 
+      className={`flex flex-col h-full ${themeColors.bg} text-white transition-colors duration-300 relative`} 
+      id="ai-assistant-container"
+      onDragEnter={handleDrag}
+      onDragOver={handleDrag}
+      onDragLeave={handleDrag}
+      onDrop={handleDrop}
+    >
+      {dragActive && (
+        <div className="absolute inset-0 bg-slate-950/90 z-50 flex flex-col items-center justify-center border-4 border-dashed border-indigo-500 rounded-lg p-6 text-center animate-fade-in pointer-events-none">
+          <FileUp className="h-12 w-12 text-indigo-400 animate-bounce mb-3" />
+          <p className="text-sm font-bold text-indigo-200">Drop Your Device File Here</p>
+          <p className="text-xs text-indigo-400 mt-1">Automatically parsing CSV records, JSON tables, logs & reports</p>
+        </div>
+      )}
+
       {/* Header Panel */}
       <div className={`flex items-center justify-between p-4 border-b ${themeColors.border} ${themeColors.bg} shrink-0`}>
         <div className="flex items-center gap-2.5">
@@ -477,23 +589,120 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
       )}
 
       {/* Footer Form Input */}
-      <form onSubmit={handleSend} className={`p-4 border-t ${themeColors.border} bg-indigo-950 flex items-center gap-2 shrink-0`}>
-        <div className="relative w-full">
+      <form onSubmit={handleSend} className={`p-4 border-t ${themeColors.border} bg-indigo-950 flex flex-col gap-2.5 shrink-0`}>
+        {attachedFile && (
+          <div className="bg-slate-900 border border-indigo-500/30 rounded-xl p-2.5 flex flex-col gap-2 animate-fade-in relative z-20">
+            <div className="flex items-center justify-between text-xs text-indigo-200">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <FileText className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                <span className="font-bold truncate" title={attachedFile.name}>{attachedFile.name}</span>
+                <span className="text-[10px] text-indigo-400/80 shrink-0 font-mono">({Math.round(attachedFile.size / 1024 * 10) / 10} KB)</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setAttachedFile(null)}
+                className="text-indigo-400 hover:text-white p-0.5 rounded transition hover:bg-slate-800"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+
+            {/* Smart Option Chips */}
+            <div className="flex flex-col gap-1.5 mt-0.5">
+              <p className="text-[9px] text-indigo-400 uppercase tracking-wider font-extrabold px-0.5">Device Import Tools</p>
+              <div className="flex flex-wrap gap-1">
+                {attachedFile.name.endsWith('.csv') ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSend(undefined, "Analyze this CSV dataset, format it as a beautiful Markdown table, and append the raw [CSV_IMPORT] codes at the bottom")}
+                      className="px-2 py-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded text-[10px] font-bold border border-emerald-800/20 transition active:scale-95 text-left truncate shrink-0"
+                    >
+                      📊 Import data grid rows
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSend(undefined, "Generate cash transaction logs from this CSV table rows, attaching [TX_RECORD] codes for all events")}
+                      className="px-2 py-1 bg-indigo-900/40 hover:bg-indigo-900 text-indigo-200 rounded text-[10px] font-bold border border-indigo-800/20 transition active:scale-95 text-left truncate shrink-0"
+                    >
+                      💰 Ledger summary logs
+                    </button>
+                  </>
+                ) : attachedFile.name.endsWith('.json') ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSend(undefined, "Parse this JSON device database, structure its parameters, and pre-format [TX_RECORD] or [INVOICE_ITEM] imports")}
+                      className="px-2 py-1 bg-amber-950 hover:bg-amber-900 text-amber-300 rounded text-[10px] font-bold border border-amber-800/20 transition active:scale-95 text-left truncate shrink-0"
+                    >
+                      💼 Struct to Ledger/Invoice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSend(undefined, "Format this raw JSON array into structured document data and bullet records")}
+                      className="px-2 py-1 bg-indigo-900/40 hover:bg-indigo-900 text-indigo-200 rounded text-[10px] font-bold border border-indigo-800/20 transition active:scale-95 text-left truncate shrink-0"
+                    >
+                      📄 Document text blocks
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSend(undefined, "Clean spelling, punctuation, and draft an executive summaries from this document file")}
+                      className="px-2 py-1 bg-violet-950 hover:bg-violet-900 text-violet-300 rounded text-[10px] font-bold border border-violet-800/20 transition active:scale-95 text-left truncate shrink-0"
+                    >
+                      ✍️ Refine copy drafts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSend(undefined, "Extract key items, billing terms, or client data lines as [INVOICE_ITEM] values")}
+                      className="px-2 py-1 bg-indigo-900/40 hover:bg-indigo-900 text-indigo-200 rounded text-[10px] font-bold border border-indigo-800/20 transition active:scale-95 text-left truncate shrink-0"
+                    >
+                      📋 Map billing lines
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 w-full">
+          {/* File Input Activator */}
           <input
-            type="text"
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            disabled={loading}
-            placeholder={`Ask our ${persona} specialist...`}
-            className="w-full bg-indigo-900/30 border border-indigo-805 rounded-full py-2.5 pl-4 pr-10 text-xs text-white placeholder-indigo-400/60 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            className="hidden"
+            accept=".csv,.json,.txt,.md,.log"
           />
           <button
-            type="submit"
-            disabled={!prompt.trim() || loading}
-            className={`absolute right-1.5 top-1.5 p-1.5 ${themeColors.accent} disabled:bg-transparent text-white disabled:text-indigo-500 rounded-full transition-all cursor-pointer`}
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Import device data (CSV, JSON, TXT, MD)"
+            className="p-2.5 bg-slate-900 hover:bg-slate-800 text-indigo-300 hover:text-white border border-indigo-800/40 rounded-full transition cursor-pointer shrink-0"
           >
-            <Send className="h-3.5 w-3.5" />
+            <Paperclip className="h-3.5 w-3.5" />
           </button>
+
+          <div className="relative w-full">
+            <input
+              type="text"
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              disabled={loading}
+              placeholder={attachedFile ? "Specify file task parameters..." : `Ask our ${persona} specialist...`}
+              className="w-full bg-white border border-indigo-200 rounded-full py-2.5 pl-4 pr-10 text-xs text-black placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-505 disabled:opacity-50 shadow-xs"
+            />
+            <button
+              type="submit"
+              disabled={(!prompt.trim() && !attachedFile) || loading}
+              className={`absolute right-1.5 top-1.5 p-1.5 ${themeColors.accent} disabled:bg-indigo-950/20 text-white disabled:text-indigo-500 rounded-full transition-all cursor-pointer`}
+            >
+              <Send className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </form>
     </div>

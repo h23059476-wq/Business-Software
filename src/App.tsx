@@ -7,7 +7,8 @@ import {
   Layout, FileText, Grid, Receipt, Award, Settings as SettingsIcon, 
   LogOut, Sparkles, MessageSquare, Loader2, RefreshCw, Smartphone, 
   Computer, ChevronRight, Lock, Eye, EyeOff, UserCheck, AlertTriangle,
-  Mail, Columns, ExternalLink, Columns2, Search, Sun, Moon
+  Mail, Columns, ExternalLink, Columns2, Search, Sun, Moon,
+  Bell, Trash, Info, X, Check, Save
 } from 'lucide-react';
 import { auth, googleAuthProvider } from './lib/firebase.ts';
 
@@ -23,10 +24,100 @@ import CommandPalette from './components/CommandPalette.tsx';
 
 type TabType = 'dashboard' | 'documents' | 'spreadsheet' | 'notes' | 'invoices' | 'settings';
 
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'save' | 'ai' | 'system' | 'info';
+  timestamp: string;
+  read: boolean;
+}
+
+function getInitialNotifications(): AppNotification[] {
+  return [
+    {
+      id: 'sys-update-v2',
+      title: 'WorkSuite AI Update Live',
+      message: 'Workspace split-screen, context-aware AI shortcuts, and multi-format File exporters are now available.',
+      type: 'system',
+      timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), // 2 hours ago
+      read: false
+    },
+    {
+      id: 'sys-db-sync',
+      title: 'Cloud Workspace Connected',
+      message: 'All spreadsheets, document sheets, and transaction logs are successfully synced with secure Firestore nodes.',
+      type: 'info',
+      timestamp: new Date(Date.now() - 3600000 * 24).toISOString(), // 1 day ago
+      read: true
+    }
+  ];
+}
+
+function formatRelativeTime(isoString: string): string {
+  try {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    if (diffMs < 0) return 'Just now';
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return 'Just now';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d ago`;
+  } catch (e) {
+    return 'Just now';
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
+
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    try {
+      const stored = localStorage.getItem('worksuite-notifications');
+      return stored ? JSON.parse(stored) : getInitialNotifications();
+    } catch (e) {
+      return getInitialNotifications();
+    }
+  });
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleAppNotification = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        title: string;
+        message: string;
+        type: 'save' | 'ai' | 'system' | 'info';
+      }>;
+      if (customEvent.detail) {
+        const { title, message, type } = customEvent.detail;
+        const newNotification: AppNotification = {
+          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title,
+          message,
+          type,
+          timestamp: new Date().toISOString(),
+          read: false
+        };
+        setNotifications(prev => {
+          const next = [newNotification, ...prev];
+          localStorage.setItem('worksuite-notifications', JSON.stringify(next));
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener('app-notification', handleAppNotification);
+    return () => {
+      window.removeEventListener('app-notification', handleAppNotification);
+    };
+  }, []);
 
   // Theme support
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -43,6 +134,37 @@ export default function App() {
     localStorage.setItem('worksuite-theme', theme);
   }, [theme]);
 
+  const markAllAsRead = () => {
+    setNotifications(prev => {
+      const next = prev.map(n => ({ ...n, read: true }));
+      localStorage.setItem('worksuite-notifications', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const deleteNotification = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNotifications(prev => {
+      const next = prev.filter(n => n.id !== id);
+      localStorage.setItem('worksuite-notifications', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const toggleReadNotification = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNotifications(prev => {
+      const next = prev.map(n => n.id === id ? { ...n, read: !n.read } : n);
+      localStorage.setItem('worksuite-notifications', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+    localStorage.setItem('worksuite-notifications', JSON.stringify([]));
+  };
+
   // Command palette and cross-module jump states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
@@ -54,6 +176,18 @@ export default function App() {
   const [splitWorkspaceMode, setSplitWorkspaceMode] = useState(false);
   const [secondaryTab, setSecondaryTab] = useState<TabType>('spreadsheet');
   const [standaloneMode, setStandaloneMode] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Toggle both side panels helper
+  const handleToggleBothPanels = () => {
+    if (sidebarOpen || aiPanelOpen) {
+      setSidebarOpen(false);
+      setAiPanelOpen(false);
+    } else {
+      setSidebarOpen(true);
+      setAiPanelOpen(true);
+    }
+  };
 
   // Auth form states
   const [isSignUp, setIsSignUp] = useState(false);
@@ -377,6 +511,8 @@ export default function App() {
             userId={user.uid} 
             onSelectContentForAi={handleSelectContentForAi}
             activeSheetId={activeSheetId}
+            initialAdoptedText={suggestionText}
+            clearAdoptedText={clearAdoptedText}
           />
         );
       case 'notes':
@@ -385,6 +521,8 @@ export default function App() {
             userId={user.uid} 
             onSelectContentForAi={handleSelectContentForAi}
             activeNoteId={activeNoteId}
+            initialAdoptedText={suggestionText}
+            clearAdoptedText={clearAdoptedText}
           />
         );
       case 'invoices':
@@ -393,6 +531,8 @@ export default function App() {
             userId={user.uid} 
             onSelectContentForAi={handleSelectContentForAi}
             activeInvoiceId={activeInvoiceId}
+            initialAdoptedText={suggestionText}
+            clearAdoptedText={clearAdoptedText}
           />
         );
       case 'settings':
@@ -419,7 +559,7 @@ export default function App() {
   return (
     <div className="h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden transition-colors duration-200" id="worksuite-workstation-main">
       {/* Sidebar Navigation */}
-      {!standaloneMode && (
+      {!standaloneMode && sidebarOpen && (
         <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0" id="worksuite-sidebar-aside">
           {/* Core Suite Logo Header */}
           <div className="p-6 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
@@ -486,11 +626,26 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0">
         {/* Workspace Toolbar Header */}
         <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 shrink-0 z-10 transition-colors duration-200">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Active Tool:</h2>
-            <span className="text-xs font-extrabold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-100/60 dark:border-indigo-900/40 uppercase tracking-wider">
-              {currentTab === 'dashboard' ? 'Letter Center' : currentTab === 'documents' ? 'Word Processor' : currentTab === 'spreadsheet' ? 'List Grid' : currentTab === 'notes' ? 'Ledger Note' : currentTab === 'invoices' ? 'Invoice Maker' : 'Account Profile'}
-            </span>
+          <div className="flex items-center gap-3">
+            {!standaloneMode && (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className={`p-2 rounded-lg transition border cursor-pointer flex items-center justify-center ${
+                  sidebarOpen 
+                    ? 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900' 
+                    : 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 font-bold'
+                }`}
+                title={sidebarOpen ? "Hide Left Sidebar" : "Show Left Sidebar"}
+              >
+                <Layout className="h-4 w-4" />
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Active Tool:</h2>
+              <span className="text-xs font-extrabold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-100/60 dark:border-indigo-900/40 uppercase tracking-wider">
+                {currentTab === 'dashboard' ? 'Letter Center' : currentTab === 'documents' ? 'Word Processor' : currentTab === 'spreadsheet' ? 'List Grid' : currentTab === 'notes' ? 'Ledger Note' : currentTab === 'invoices' ? 'Invoice Maker' : 'Account Profile'}
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -529,6 +684,128 @@ export default function App() {
               )}
             </button>
 
+            {/* Notification Center */}
+            <div className="relative" id="notification-center-dropdown">
+              <button
+                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer mr-1 relative"
+                title="Notifications"
+              >
+                <Bell className="h-4 w-4" />
+                {notifications.some(n => !n.read) && (
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-indigo-600 animate-pulse" />
+                )}
+                {notifications.some(n => !n.read) && (
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-indigo-600" />
+                )}
+              </button>
+
+              {isNotificationsOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setIsNotificationsOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden z-40">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-xs text-slate-700 dark:text-slate-300 tracking-wider">NOTIFICATIONS</span>
+                        {notifications.filter(n => !n.read).length > 0 && (
+                          <span className="px-1.5 py-0.5 text-[9px] bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-extrabold rounded-full">
+                            {notifications.filter(n => !n.read).length} new
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {notifications.length > 0 && (
+                          <>
+                            <button
+                              onClick={markAllAsRead}
+                              className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold transition cursor-pointer"
+                            >
+                              Mark read
+                            </button>
+                            <span className="text-slate-300 dark:text-slate-700 text-xs">|</span>
+                            <button
+                              onClick={clearAllNotifications}
+                              className="text-[10px] text-slate-500 hover:text-red-550 dark:hover:text-red-400 hover:underline font-bold transition cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/40">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center flex flex-col items-center justify-center">
+                          <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center text-slate-300 dark:text-slate-600 mb-2">
+                            <Bell className="h-5 w-5" />
+                          </div>
+                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">All caught up!</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">No pending workspace updates.</span>
+                        </div>
+                      ) : (
+                        notifications.map((n) => {
+                          let IconComp = Info;
+                          let iconColor = "text-blue-500 bg-blue-50 dark:bg-blue-950/45";
+                          if (n.type === 'save') {
+                            IconComp = Save;
+                            iconColor = "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/45";
+                          } else if (n.type === 'ai') {
+                            IconComp = Sparkles;
+                            iconColor = "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/45";
+                          } else if (n.type === 'system') {
+                            IconComp = RefreshCw;
+                            iconColor = "text-amber-500 bg-amber-50 dark:bg-amber-950/45";
+                          }
+
+                          return (
+                            <div
+                              key={n.id}
+                              onClick={(e) => toggleReadNotification(n.id, e)}
+                              className={`p-3.5 flex gap-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition cursor-pointer group ${
+                                !n.read ? 'bg-slate-50/50 dark:bg-slate-800/10' : ''
+                              }`}
+                            >
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${iconColor}`}>
+                                <IconComp className="h-4.5 w-4.5" />
+                              </div>
+                              <div className="flex-1 min-w-0 pr-1">
+                                <div className="flex items-start justify-between gap-1.5">
+                                  <h3 className={`text-[11px] leading-tight truncate ${
+                                    !n.read ? 'font-bold text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'
+                                  }`}>
+                                    {n.title}
+                                  </h3>
+                                  <span className="text-[9px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">
+                                    {formatRelativeTime(n.timestamp)}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed line-clamp-2">
+                                  {n.message}
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-center justify-between shrink-0 pl-1">
+                                {!n.read && (
+                                  <div className="h-1.5 w-1.5 rounded-full bg-indigo-600 mt-1.5" />
+                                )}
+                                <button
+                                  onClick={(e) => deleteNotification(n.id, e)}
+                                  className="text-slate-300 dark:text-slate-700 hover:text-red-500 dark:hover:text-red-400 p-0.5 rounded opacity-0 group-hover:opacity-100 transition mt-auto cursor-pointer"
+                                  title="Dismiss notification"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
             {/* Toggle Multi-window Panel split view */}
             <button
               onClick={() => setSplitWorkspaceMode(!splitWorkspaceMode)}
@@ -553,6 +830,19 @@ export default function App() {
             </button>
 
             <div className="h-6 w-[1.5px] bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block"></div>
+
+            <button
+              onClick={handleToggleBothPanels}
+              className={`inline-flex items-center gap-1.5 py-2 px-4 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer ${
+                (!sidebarOpen && !aiPanelOpen)
+                  ? 'bg-amber-600 text-white hover:bg-amber-700 shadow-amber-100 dark:shadow-none'
+                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+              title={(!sidebarOpen && !aiPanelOpen) ? "Show both side panels (Sidebar + AI)" : "Hide both sidebar navigation and AI assistant panel"}
+            >
+              <Layout className="h-4 w-4" />
+              <span>{(!sidebarOpen && !aiPanelOpen) ? "Show Both Panels" : "Hide Both Panels"}</span>
+            </button>
 
             <button
               onClick={() => setAiPanelOpen(!aiPanelOpen)}

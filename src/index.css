@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
@@ -25,4 +27,30 @@
 /* Utility classes for spreadsheets and text editor focus states */
 .no-outline-focus:focus {
   outline: none;
+}
+
+/* Ensure all user-typed inputs, textareas, selects, and contentEditable areas use black font color in light mode */
+html:not(.dark) input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+html:not(.dark) textarea,
+html:not(.dark) select,
+html:not(.dark) [contenteditable="true"],
+.user-input-black {
+  color: #000000 !important;
+}
+
+/* Ensure placeholders remain visible but unobtrusive for dark text typing */
+input::placeholder,
+textarea::placeholder,
+[contenteditable="true"]::placeholder {
+  color: #6b7280 !important;
+  opacity: 0.75 !important;
+}
+
+/* Ensure active user text inputs stay highly readable with a light background */
+html:not(.dark) input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):focus,
+html:not(.dark) textarea:focus,
+html:not(.dark) select:focus,
+html:not(.dark) [contenteditable="true"]:focus {
+  background-color: #ffffff !important;
+  color: #000000 !important;
 }

@@ -177,6 +177,13 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
       });
 
       doc.save(`letter_${selectedTemplate.id}.pdf`);
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Letter Exported',
+          message: `Corporate letter generated and downloaded as "letter_${selectedTemplate.id}.pdf".`,
+          type: 'info'
+        }
+      }));
     } catch (err) {
       console.error(err);
     }
@@ -203,6 +210,13 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
       const data = await res.json();
       if (data.text) {
         setLetterBody(data.text.trim());
+        window.dispatchEvent(new CustomEvent('app-notification', {
+          detail: {
+            title: 'Letter Polished by AI',
+            message: 'Successfully rewrote and polished letter template body with formal business language.',
+            type: 'ai'
+          }
+        }));
       }
     } catch (err) {
       console.error(err);
