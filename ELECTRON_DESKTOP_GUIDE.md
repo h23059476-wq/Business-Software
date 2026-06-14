@@ -54,6 +54,6 @@ Inside this folder, you will find:
 ---
 
 ## 🎨 Professional Visual Configurations Implemented
-1.  **Fully Custom Icon Brushing**: Integrated the high-definition square brand icon (`src-tauri/icons/icon.ico`) as the default taskbar launch shortcut, execution window profile, and target installer identity.
+1.  **Fully Custom Icon Brushing**: Integrated the high-definition square brand icon (`electron/icons/icon.ico`) as the default taskbar launch shortcut, execution window profile, and target installer identity.
 2.  **Immersive Screen Space**: Disabled boring standard system browser dropdown menus (`Menu.setApplicationMenu(null)`) to give you more visual area and a truly premium application atmosphere.
 3.  **Intelligent Route Resolution**: Configured Vite asset mapping dynamically (`base: './'`) to resolve file systems seamlessly (`file://` pathways) inside Electron's sandbox, preventing white screen errors.

@@ -1,7 +1,9 @@
 {
-  "name": "react-example",
+  "name": "worksuite",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "WorkSuite desktop workstation application for professional documents, spreadsheets, and notes.",
+  "author": "WorkSuite Team <info@worksuite.com>",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -16,17 +18,17 @@
   "build": {
     "appId": "com.worksuite.app",
     "productName": "WorkSuite",
+    "icon": "electron/icons/icon.ico",
     "files": [
       "dist/**/*",
-      "electron/**/*",
-      "src-tauri/icons/**/*"
+      "electron/**/*"
     ],
     "directories": {
       "output": "dist-desktop"
     },
     "win": {
       "target": "nsis",
-      "icon": "src-tauri/icons/icon.ico"
+      "icon": "electron/icons/icon.ico"
     },
     "nsis": {
       "oneClick": false,

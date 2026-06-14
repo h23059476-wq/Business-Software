@@ -12,7 +12,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: "WorkSuite Office Workstation",
-    icon: path.join(__dirname, '../src-tauri/icons/icon.ico'), // standard Windows Icon file
+    icon: path.join(__dirname, 'icons/icon.ico'), // standard Windows Icon file
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
