@@ -109,27 +109,9 @@ When advising on invoice line items or billing items, write a special item tag s
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "custom",
+      appType: "spa",
     });
     app.use(vite.middlewares);
-
-    // Serve HTML fallback dynamically with Vite transform injection
-    app.use('*', async (req, res, next) => {
-      const url = req.originalUrl;
-      // Skip API endpoints or file asset routes which should be handled by static/Vite middlewares
-      if (url.startsWith('/api') || url.includes('.')) {
-        return next();
-      }
-      try {
-        const htmlPath = path.join(process.cwd(), 'index.html');
-        let html = fs.readFileSync(htmlPath, 'utf-8');
-        html = await vite.transformIndexHtml(url, html);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
-      } catch (e: any) {
-        vite.ssrFixStacktrace(e);
-        next(e);
-      }
-    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
