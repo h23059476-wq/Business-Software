@@ -238,6 +238,38 @@ export default function App() {
     }
   };
 
+  // Sync state with local events (e.g. from Settings update/logout)
+  useEffect(() => {
+    const handleLocalProfileUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<any>;
+      if (customEvent.detail) {
+        setUser(customEvent.detail);
+      }
+    };
+    const handleLocalLogout = () => {
+      setUser(null);
+    };
+
+    window.addEventListener('local-profile-updated', handleLocalProfileUpdate);
+    window.addEventListener('local-logout', handleLocalLogout);
+    return () => {
+      window.removeEventListener('local-profile-updated', handleLocalProfileUpdate);
+      window.removeEventListener('local-logout', handleLocalLogout);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out of WorkSuite?")) {
+      localStorage.removeItem('worksuite-local-user-active');
+      setUser(null);
+      try {
+        await signOut(auth);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
   // Load auth state change listeners and query parameters
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -250,8 +282,23 @@ export default function App() {
     }
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
+      if (currentUser) {
+        setUser(currentUser);
+        setAuthLoading(false);
+      } else {
+        // Fallback to local auth if saved
+        const storedLocal = localStorage.getItem('worksuite-local-user-active');
+        if (storedLocal) {
+          try {
+            setUser(JSON.parse(storedLocal));
+          } catch (_) {
+            setUser(null);
+          }
+        } else {
+          setUser(null);
+        }
+        setAuthLoading(false);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -260,19 +307,47 @@ export default function App() {
   const handleGuestSignIn = async () => {
     setAuthLoading(true);
     setAuthError(null);
+    const guestEmail = "guest.worksuite@cloudworkspace.com";
+    const guestPassword = "WorkspacePass123!";
     try {
-      // Sign in helper with dedicated testing account or create on the fly
-      const guestEmail = "guest.worksuite@cloudworkspace.com";
-      const guestPassword = "WorkspacePass123!";
       try {
-        await signInWithEmailAndPassword(auth, guestEmail, guestPassword);
+        const res = await signInWithEmailAndPassword(auth, guestEmail, guestPassword);
+        setUser(res.user);
       } catch (authErr: any) {
-        if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
+        if (authErr?.code === 'auth/operation-not-allowed' || authErr?.message?.includes('operation-not-allowed')) {
+          // Fallback to localized guest mode directly
+          const mockUser = {
+            uid: 'local-guest-user',
+            email: guestEmail,
+            displayName: "Guest Auditor (Local Sandbox)",
+            emailVerified: true,
+            photoURL: null,
+          } as any;
+          localStorage.setItem('worksuite-local-user-active', JSON.stringify(mockUser));
+          setUser(mockUser);
+          
+          setNotifications(prev => {
+            const next = [
+              {
+                id: `sys-local-${Date.now()}`,
+                title: 'Localized Sandbox Active',
+                message: 'Email & Password authentication is pending console setup. Switched to local sandbox session successfully.',
+                type: 'system' as const,
+                timestamp: new Date().toISOString(),
+                read: false
+              },
+              ...prev
+            ];
+            localStorage.setItem('worksuite-notifications', JSON.stringify(next));
+            return next;
+          });
+        } else if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
           // auto sign-up guest account if not exists
           const res = await createUserWithEmailAndPassword(auth, guestEmail, guestPassword);
           await updateProfile(res.user, {
             displayName: "Guest Auditor"
           });
+          setUser(res.user);
         } else {
           throw authErr;
         }
@@ -295,10 +370,78 @@ export default function App() {
           setAuthLoading(false);
           return;
         }
-        const res = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(res.user, { displayName: fullName.trim() });
+        try {
+          const res = await createUserWithEmailAndPassword(auth, email, password);
+          await updateProfile(res.user, { displayName: fullName.trim() });
+          setUser(res.user);
+        } catch (authErr: any) {
+          if (authErr?.code === 'auth/operation-not-allowed' || authErr?.message?.includes('operation-not-allowed')) {
+            // Local fallback registration
+            const mockUser = {
+              uid: 'local-' + email.replace(/[^a-zA-Z0-9]/g, ''),
+              email: email,
+              displayName: fullName.trim(),
+              emailVerified: true,
+              photoURL: null,
+            } as any;
+            localStorage.setItem('worksuite-local-user-active', JSON.stringify(mockUser));
+            setUser(mockUser);
+            
+            setNotifications(prev => {
+              const next = [
+                {
+                  id: `sys-local-${Date.now()}`,
+                  title: 'Offline Session Created',
+                  message: 'Your portal has switched to a localized sandbox because email/password authentication is pending console setup.',
+                  type: 'system' as const,
+                  timestamp: new Date().toISOString(),
+                  read: false
+                },
+                ...prev
+              ];
+              localStorage.setItem('worksuite-notifications', JSON.stringify(next));
+              return next;
+            });
+          } else {
+            throw authErr;
+          }
+        }
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        try {
+          const res = await signInWithEmailAndPassword(auth, email, password);
+          setUser(res.user);
+        } catch (authErr: any) {
+          if (authErr?.code === 'auth/operation-not-allowed' || authErr?.message?.includes('operation-not-allowed') || authErr?.code === 'auth/user-not-found') {
+            // Check stored local user
+            const storedLocal = localStorage.getItem('worksuite-local-user-active');
+            let mockUser: any = null;
+            if (storedLocal) {
+              try {
+                const parsed = JSON.parse(storedLocal);
+                if (parsed.email === email) {
+                  mockUser = parsed;
+                }
+              } catch (_) {}
+            }
+            // Auto create matching offline profile on console auth disabled
+            if (!mockUser && (authErr?.code === 'auth/operation-not-allowed' || authErr?.message?.includes('operation-not-allowed'))) {
+              mockUser = {
+                uid: 'local-' + email.replace(/[^a-zA-Z0-9]/g, ''),
+                email: email,
+                displayName: email.split('@')[0],
+                emailVerified: true,
+                photoURL: null,
+              };
+              localStorage.setItem('worksuite-local-user-active', JSON.stringify(mockUser));
+            }
+
+            if (mockUser) {
+              setUser(mockUser);
+              return;
+            }
+          }
+          throw authErr;
+        }
       }
     } catch (e: any) {
       setAuthError(e.message || "Credential configuration challenge.");
@@ -311,7 +454,8 @@ export default function App() {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      await signInWithPopup(auth, googleAuthProvider);
+      const res = await signInWithPopup(auth, googleAuthProvider);
+      setUser(res.user);
     } catch (e: any) {
       setAuthError(e.message || "Google single sign-on skipped.");
     } finally {
@@ -611,7 +755,7 @@ export default function App() {
                 <p className="text-[9px] text-slate-500 dark:text-slate-400 truncate leading-none mt-0.5">{user.email}</p>
               </div>
               <button
-                onClick={() => signOut(auth)}
+                onClick={handleLogout}
                 className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 rounded-lg transition shrink-0 cursor-pointer"
                 title="Log Out Profile"
               >

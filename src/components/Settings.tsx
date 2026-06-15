@@ -71,14 +71,24 @@ export default function Settings({ userId, email, displayName, photoURL }: Setti
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser || saving) return;
+    if (saving) return;
 
     setSaving(true);
     setSaved(false);
     try {
-      await updateProfile(auth.currentUser, {
-        displayName: name.trim()
-      });
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, {
+          displayName: name.trim()
+        });
+      } else {
+        const storedLocal = localStorage.getItem('worksuite-local-user-active');
+        if (storedLocal) {
+          const parsed = JSON.parse(storedLocal);
+          parsed.displayName = name.trim();
+          localStorage.setItem('worksuite-local-user-active', JSON.stringify(parsed));
+          window.dispatchEvent(new CustomEvent('local-profile-updated', { detail: parsed }));
+        }
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
@@ -90,7 +100,13 @@ export default function Settings({ userId, email, displayName, photoURL }: Setti
 
   const handleSignOut = async () => {
     if (window.confirm("Are you sure you want to log out of WorkSuite?")) {
-      await signOut(auth);
+      localStorage.removeItem('worksuite-local-user-active');
+      window.dispatchEvent(new CustomEvent('local-logout'));
+      try {
+        await signOut(auth);
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
 
