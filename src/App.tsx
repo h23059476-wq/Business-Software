@@ -8,7 +8,7 @@ import {
   LogOut, Sparkles, MessageSquare, Loader2, RefreshCw, Smartphone, 
   Computer, ChevronRight, Lock, Eye, EyeOff, UserCheck, AlertTriangle,
   Mail, Columns, ExternalLink, Columns2, Search, Sun, Moon,
-  Bell, Trash, Info, X, Check, Save
+  Bell, Trash, Info, X, Check, Save, BookOpen
 } from 'lucide-react';
 import { auth, googleAuthProvider } from './lib/firebase.ts';
 
@@ -21,6 +21,8 @@ import InvoiceMaker from './components/InvoiceMaker.tsx';
 import Settings from './components/Settings.tsx';
 import AiAssistant from './components/AiAssistant.tsx';
 import CommandPalette from './components/CommandPalette.tsx';
+import PdfPreviewModal from './components/PdfPreviewModal.tsx';
+import { generateGuidePDF } from './lib/generateGuide.ts';
 
 type TabType = 'dashboard' | 'documents' | 'spreadsheet' | 'notes' | 'invoices' | 'settings';
 
@@ -167,6 +169,7 @@ export default function App() {
 
   // Command palette and cross-module jump states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
@@ -828,6 +831,16 @@ export default function App() {
               )}
             </button>
 
+            {/* Interactive User Guide PDF Button */}
+            <button
+              onClick={() => setIsGuideOpen(true)}
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 rounded-lg transition border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 cursor-pointer mr-1 flex items-center gap-1.5 font-bold text-xs"
+              title="Official User Guide Handbook PDF"
+            >
+              <BookOpen className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">User Guide</span>
+            </button>
+
             {/* Notification Center */}
             <div className="relative" id="notification-center-dropdown">
               <button
@@ -1072,6 +1085,14 @@ export default function App() {
           onSelectItem={handleCommandPaletteSelect}
         />
       )}
+
+      <PdfPreviewModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+        title="WorkSuite Interactive Manual & Guide"
+        pdfGenerator={generateGuidePDF}
+        fileName="WorkSuite_User_Guide.pdf"
+      />
     </div>
   );
 }

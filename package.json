@@ -19,7 +19,7 @@
   "build": {
     "appId": "com.worksuite.app",
     "productName": "WorkSuite",
-    "icon": "electron/icons/icon.ico",
+    "icon": "electron/icons/icon.png",
     "files": [
       "dist/**/*",
       "electron/**/*"
@@ -29,7 +29,7 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "electron/icons/icon.ico"
+      "icon": "electron/icons/icon.png"
     },
     "nsis": {
       "oneClick": false,
