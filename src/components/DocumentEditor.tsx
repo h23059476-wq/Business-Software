@@ -7,10 +7,9 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
-  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, 
-  onSnapshot 
-} from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+  db, auth, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { DocumentData } from '../types.ts';
 import PdfPreviewModal from './PdfPreviewModal.tsx';
 
@@ -36,6 +35,7 @@ export default function DocumentEditor({
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [docTitle, setDocTitle] = useState('');
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const [docListOpen, setDocListOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
 
   // Find & Replace States
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
@@ -592,9 +592,21 @@ export default function DocumentEditor({
   };
 
   return (
-    <div className="flex h-full bg-slate-50/50 dark:bg-slate-950/40 text-slate-800 dark:text-slate-100" id="document-processor">
+    <div className="flex h-full bg-slate-50/50 dark:bg-slate-950/40 text-slate-800 dark:text-slate-100 relative" id="document-processor">
+      {/* Scroll shield on mobile */}
+      {docListOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-15"
+          onClick={() => setDocListOpen(false)}
+        />
+      )}
+
       {/* Sidebar - documents list */}
-      <div className="w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0">
+      <div className={`border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 transition-all duration-300 ${
+        docListOpen 
+          ? 'w-64 opacity-100 visible' 
+          : 'w-0 opacity-0 invisible overflow-hidden border-r-0'
+      } fixed md:static inset-y-16 md:inset-y-auto left-0 z-20 h-[calc(100vh-64px)] md:h-auto shadow-lg md:shadow-none`}>
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
@@ -620,7 +632,13 @@ export default function DocumentEditor({
             documents.map((docItem) => (
               <div
                 key={docItem.id}
-                onClick={() => setActiveDoc(docItem)}
+                onClick={() => {
+                  setActiveDoc(docItem);
+                  // Auto close drawer on mobile upon selection
+                  if (window.innerWidth < 768) {
+                    setDocListOpen(false);
+                  }
+                }}
                 className={`group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${
                   activeDoc?.id === docItem.id 
                     ? 'bg-indigo-50 dark:bg-indigo-950/45 text-indigo-800 dark:text-indigo-305 font-bold border-l-2 border-indigo-600' 
@@ -733,14 +751,25 @@ export default function DocumentEditor({
           )}
 
           {/* Header Title Editor */}
-          <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/10 dark:bg-slate-950/15">
-            <input
-              type="text"
-              value={docTitle}
-              onChange={handleTitleChange}
-              placeholder="Untitled Document"
-              className="text-lg font-bold text-slate-850 dark:text-slate-100 bg-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/40 focus:bg-white dark:focus:bg-slate-950 border-x-0 border-y-0 focus:ring-0 w-96 font-sans no-outline-focus transition"
-            />
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between bg-slate-50/10 dark:bg-slate-950/15 gap-3">
+            <div className="flex items-center gap-2 grow">
+              {/* Sidebar toggle for mobile/tablets */}
+              <button
+                onClick={() => setDocListOpen(!docListOpen)}
+                className="md:hidden p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-indigo-600 rounded-lg transition border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900 cursor-pointer"
+                title="Toggle Documents List"
+              >
+                <FolderOpen className="h-4 w-4" />
+              </button>
+              
+              <input
+                type="text"
+                value={docTitle}
+                onChange={handleTitleChange}
+                placeholder="Untitled Document"
+                className="text-base sm:text-lg font-bold text-slate-850 dark:text-slate-100 bg-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/40 focus:bg-white dark:focus:bg-slate-950 border-x-0 border-y-0 focus:ring-0 w-full sm:w-96 font-sans no-outline-focus transition"
+              />
+            </div>
 
             {/* Sync Save State Indicator */}
             <div className="flex items-center gap-4 text-xs">
@@ -931,12 +960,12 @@ export default function DocumentEditor({
           </div>
 
           {/* Text Canvas Container */}
-          <div className="flex-1 overflow-y-auto p-12 bg-slate-50 dark:bg-slate-950 flex justify-center">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-12 bg-slate-50 dark:bg-slate-950 flex justify-center">
             <div 
               ref={editorRef}
               contentEditable
               onInput={handleEditorInput}
-              className="w-full max-w-4xl bg-white dark:bg-slate-900 min-h-[842px] p-16 shadow-sm border border-slate-200/60 dark:border-slate-800/80 rounded-2xl focus:outline-none prose prose-slate dark:prose-invert prose-indigo dark:prose-indigo max-w-none prose-p:my-2 prose-h1:my-4 prose-h2:my-3 text-slate-800 dark:text-slate-200"
+              className="w-full max-w-4xl bg-white dark:bg-slate-900 min-h-[842px] p-4 sm:p-10 md:p-16 shadow-sm border border-slate-200/60 dark:border-slate-800/80 rounded-2xl focus:outline-none prose prose-slate dark:prose-invert prose-indigo dark:prose-indigo max-w-none prose-p:my-2 prose-h1:my-4 prose-h2:my-3 text-slate-800 dark:text-slate-200"
               style={{ minHeight: '29.7cm' }} // A4 proportions approximately
             />
           </div>

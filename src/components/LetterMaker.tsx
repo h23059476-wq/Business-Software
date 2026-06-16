@@ -236,13 +236,13 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
   return (
     <div className="flex h-full flex-col bg-slate-50/50 dark:bg-slate-950/40 text-slate-800 dark:text-slate-100" id="letter-maker-viewport">
       {/* Tab Switcher Headers */}
-      <div className="px-8 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center shrink-0">
-        <div className="flex gap-6">
+      <div className="px-4 sm:px-8 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row justify-between sm:items-center shrink-0 py-2 sm:py-0 gap-3">
+        <div className="flex gap-4 sm:gap-6 overflow-x-auto">
           <button
             onClick={() => setActiveTab('writer')}
-            className={`py-4 text-xs font-bold uppercase tracking-wider relative border-b-2 transition cursor-pointer ${
+            className={`py-3 sm:py-4 text-xs font-bold uppercase tracking-wider relative border-b-2 transition cursor-pointer whitespace-nowrap ${
               activeTab === 'writer' 
-                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-black' 
+                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-extrabold' 
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
@@ -254,9 +254,9 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
 
           <button
             onClick={() => setActiveTab('accounts')}
-            className={`py-4 text-xs font-bold uppercase tracking-wider relative border-b-2 transition cursor-pointer ${
+            className={`py-3 sm:py-4 text-xs font-bold uppercase tracking-wider relative border-b-2 transition cursor-pointer whitespace-nowrap ${
               activeTab === 'accounts' 
-                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-black' 
+                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-extrabold' 
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
@@ -267,13 +267,13 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
           </button>
         </div>
 
-        <div className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded px-2.5 py-1 font-mono font-bold">
+        <div className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded px-2.5 py-1 font-mono font-bold self-end sm:self-auto hidden xs:block">
           Workspace Hub v3.2
         </div>
       </div>
 
       {/* Main Panel views scrollable */}
-      <div className="flex-1 overflow-y-auto p-8 scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8 scrollbar">
         {activeTab === 'accounts' ? (
           <AccountsSummary userId={userId} />
         ) : (
@@ -414,7 +414,7 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
                 </div>
 
                 {/* Simulated professional legal page layout */}
-                <div className="flex-1 bg-white dark:bg-slate-950 p-8 md:p-12 font-sans flex flex-col transition-colors duration-200">
+                <div className="flex-1 bg-white dark:bg-slate-950 p-4 sm:p-8 md:p-12 font-sans flex flex-col transition-colors duration-200">
                   {/* Fake letter header logo */}
                   <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-4 mb-6">
                     <div>

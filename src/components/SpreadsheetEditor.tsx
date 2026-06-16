@@ -6,10 +6,9 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
-  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, 
-  onSnapshot 
-} from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+  db, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { SpreadsheetData } from '../types.ts';
 import PdfPreviewModal from './PdfPreviewModal.tsx';
 
@@ -37,6 +36,7 @@ export default function SpreadsheetEditor({
   const [sheetTitle, setSheetTitle] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const [sheetListOpen, setSheetListOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
 
   // Grid dimensions
   const [cols, setCols] = useState<string[]>(['A', 'B', 'C', 'D', 'E', 'F', 'G']);
@@ -694,49 +694,67 @@ export default function SpreadsheetEditor({
   };
 
   return (
-    <div className="flex h-full bg-slate-50/50" id="spreadsheet-processor">
+    <div className="flex h-full bg-slate-50/50 dark:bg-slate-950/40 text-slate-800 dark:text-slate-105 relative" id="spreadsheet-processor">
+      {/* Scroll shield on mobile */}
+      {sheetListOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-15"
+          onClick={() => setSheetListOpen(false)}
+        />
+      )}
+
       {/* List Sidebar */}
-      <div className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      <div className={`border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 transition-all duration-300 ${
+        sheetListOpen 
+          ? 'w-64 opacity-100 visible' 
+          : 'w-0 opacity-0 invisible overflow-hidden border-r-0'
+      } fixed md:static inset-y-16 md:inset-y-auto left-0 z-20 h-[calc(100vh-64px)] md:h-auto shadow-lg md:shadow-none`}>
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
           <div className="flex items-center gap-2">
-            <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Active Lists</h3>
+            <FileSpreadsheet className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-widest">Active Lists</h3>
           </div>
           <button 
             onClick={createNewSheet}
-            className="p-1 hover:bg-indigo-50 text-indigo-600 rounded-lg transition"
+            className="p-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg transition cursor-pointer"
             title="Create List"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar bg-white dark:bg-slate-900">
           {loading ? (
-            <div className="text-xs text-slate-400 p-4 font-mono">Loading...</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 p-4 font-mono">Loading...</div>
           ) : spreadsheets.length === 0 ? (
-            <div className="text-xs text-slate-400 p-4 text-center">
+            <div className="text-xs text-slate-400 dark:text-slate-500 p-4 text-center">
               No list grids found. Click '+' above to start!
             </div>
           ) : (
             spreadsheets.map((sheet) => (
               <div
                 key={sheet.id}
-                onClick={() => setActiveSheet(sheet)}
+                onClick={() => {
+                  setActiveSheet(sheet);
+                  // Auto close drawer on mobile upon selection
+                  if (window.innerWidth < 768) {
+                    setSheetListOpen(false);
+                  }
+                }}
                 className={`group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${
                   activeSheet?.id === sheet.id 
-                    ? 'bg-indigo-50 text-indigo-800 font-bold border-l-2 border-indigo-600' 
-                    : 'hover:bg-slate-50 text-slate-600'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-805 dark:text-indigo-305 font-bold border-l-2 border-indigo-600' 
+                    : 'hover:bg-slate-55 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0 pr-2">
-                  <Grid className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <Grid className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
                   <span className="truncate">{sheet.title || 'Untitled'}</span>
                 </div>
                 <button
                   onClick={(e) => deleteSheet(sheet.id, e)}
                   type="button"
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-600 transition"
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-600 dark:hover:text-rose-450 transition cursor-pointer"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -748,15 +766,26 @@ export default function SpreadsheetEditor({
 
       {/* Grid workspace */}
       {activeSheet ? (
-        <div className="flex-1 flex flex-col min-w-0 bg-white">
+        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900">
           {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/10">
-            <input
-              type="text"
-              value={sheetTitle}
-              onChange={handleTitleChange}
-              className="text-lg font-bold text-slate-850 bg-transparent hover:bg-slate-100/50 focus:bg-white border-0 rounded px-2 py-1 focus:ring-0 focus:border-indigo-300 w-96 font-sans no-outline-focus transition"
-            />
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between bg-slate-50/10 dark:bg-slate-950/15 gap-3">
+            <div className="flex items-center gap-2 grow">
+              {/* Sidebar toggle for mobile/tablets */}
+              <button
+                onClick={() => setSheetListOpen(!sheetListOpen)}
+                className="md:hidden p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-indigo-600 rounded-lg transition border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900 cursor-pointer"
+                title="Toggle Lists Sidebar"
+              >
+                <FolderOpen className="h-4 w-4" />
+              </button>
+              
+              <input
+                type="text"
+                value={sheetTitle}
+                onChange={handleTitleChange}
+                className="text-base sm:text-lg font-bold text-slate-850 dark:text-slate-100 bg-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/40 focus:bg-white dark:focus:bg-slate-950 border-0 rounded px-2 py-1 focus:ring-0 focus:border-indigo-300 w-full sm:w-96 font-sans no-outline-focus transition"
+              />
+            </div>
 
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-1.5 font-mono text-slate-400">
@@ -817,29 +846,29 @@ export default function SpreadsheetEditor({
           </div>
 
           {/* Formula bar */}
-          <div className="px-6 py-3 border-b border-slate-200 bg-slate-50/50 flex items-center gap-2 text-xs">
-            <div className="w-12 text-slate-400 font-bold font-mono text-center">
+          <div className="px-4 sm:px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-800 dark:text-slate-105 flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs">
+            <div className="w-12 text-slate-400 dark:text-slate-500 font-bold font-mono text-center">
               {activeCell || '---'}
             </div>
-            <div className="text-slate-400 font-medium italic select-none">fx</div>
+            <div className="text-slate-400 dark:text-slate-500 font-medium italic select-none">fx</div>
             <input
               type="text"
               value={cellInput}
               onChange={(e) => handleCellChange(e.target.value)}
-              placeholder="Select cell and type data or algebra formulas (e.g., =B2*C2 or =SUM(B2:B4))"
-              className="flex-1 border border-slate-200 rounded px-3 py-1.5 focus:outline-none focus:border-indigo-300 focus:ring-0 font-mono text-xs bg-white transition"
+              placeholder="Type data or algebra formulas (e.g., =B2*C2 or =SUM(B2:B4))"
+              className="flex-1 border border-slate-200 dark:border-slate-800 rounded px-3 py-1.5 focus:outline-none focus:border-indigo-305 dark:focus:border-indigo-700 focus:ring-0 font-mono text-xs bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition whitespace-nowrap min-w-0"
             />
           </div>
 
           {/* AI Cell Import Suggestions */}
           {aiImportTable && (
-            <div className="mx-6 my-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in text-slate-800">
+            <div className="mx-4 sm:mx-6 my-3 bg-emerald-50 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-900/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in text-slate-800 dark:text-slate-200">
               <div className="flex items-start gap-3">
-                <Sparkles className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5 animate-pulse" />
+                <Sparkles className="h-5 w-5 text-emerald-600 dark:text-emerald-450 shrink-0 mt-0.5 animate-pulse" />
                 <div>
-                  <p className="font-bold text-xs text-slate-900">AI Table Import suggestion</p>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    Detected <span className="font-bold">{aiImportTable.rows.length} rows</span> to load into spreadsheet starting at column-head <span className="font-bold text-emerald-700">{activeCell || "A1"}</span>.
+                  <p className="font-bold text-xs text-slate-900 dark:text-slate-100">AI Table Import suggestion</p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    Detected <span className="font-bold">{aiImportTable.rows.length} rows</span> to load into spreadsheet starting at column-head <span className="font-bold text-emerald-700 dark:text-emerald-400">{activeCell || "A1"}</span>.
                   </p>
                 </div>
               </div>
@@ -857,7 +886,7 @@ export default function SpreadsheetEditor({
                     setAiImportTable(null);
                     if (clearAdoptedText) clearAdoptedText();
                   }}
-                  className="px-3 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  className="px-3 py-1.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-650 dark:text-slate-400 rounded-lg text-xs font-semibold transition cursor-pointer"
                 >
                   Ignore
                 </button>
@@ -866,40 +895,40 @@ export default function SpreadsheetEditor({
           )}
 
           {/* Table Operations Grid */}
-          <div className="px-6 py-2 border-b border-slate-200 bg-slate-100/30 flex items-center gap-3 text-xs text-slate-600 font-bold select-none">
+          <div className="px-4 sm:px-6 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-105/30 dark:bg-slate-950/20 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-400 font-bold select-none">
             <div className="flex items-center gap-1.5">
-              <PlusCircle className="h-4.5 w-4.5 text-indigo-600 cursor-pointer hover:scale-105 transition" onClick={addColumn} />
+              <PlusCircle className="h-4.5 w-4.5 text-indigo-650 dark:text-indigo-400 cursor-pointer hover:scale-105 transition" onClick={addColumn} />
               <span>Col</span>
-              <MinusCircle className="h-4.5 w-4.5 text-slate-400 cursor-pointer hover:scale-105 transition" onClick={removeColumn} />
+              <MinusCircle className="h-4.5 w-4.5 text-slate-400 dark:text-slate-650 cursor-pointer hover:scale-105 transition" onClick={removeColumn} />
             </div>
-            <span className="text-slate-300">|</span>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
             <div className="flex items-center gap-1.5">
-              <PlusCircle className="h-4.5 w-4.5 text-indigo-600 cursor-pointer hover:scale-105 transition" onClick={addRow} />
+              <PlusCircle className="h-4.5 w-4.5 text-indigo-655 dark:text-indigo-400 cursor-pointer hover:scale-105 transition" onClick={addRow} />
               <span>Row</span>
-              <MinusCircle className="h-4.5 w-4.5 text-slate-400 cursor-pointer hover:scale-105 transition" onClick={removeRow} />
+              <MinusCircle className="h-4.5 w-4.5 text-slate-400 dark:text-slate-650 cursor-pointer hover:scale-105 transition" onClick={removeRow} />
             </div>
 
             {onSelectContentForAi && activeCell && (
               <button
                 onClick={() => onSelectContentForAi(`Active spreadsheet cell [${activeCell}]: "${grid[activeCell] || ''}" evaluated as "${evaluateCell(activeCell)}"`)}
                 type="button"
-                className="ml-auto inline-flex items-center gap-1 hover:text-indigo-700 bg-indigo-50 text-indigo-600 font-bold px-2.5 py-1.5 rounded-lg border border-indigo-100 transition"
+                className="ml-auto inline-flex items-center gap-1 hover:text-indigo-705 dark:hover:text-amber-302 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-305 font-bold px-2.5 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 transition text-[11px] cursor-pointer"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                <span>Explain this cell with AI</span>
+                <span>Explain cell with AI</span>
               </button>
             )}
           </div>
 
           {/* Interactive Matrix Grid */}
-          <div className="flex-1 overflow-auto bg-slate-50 p-6">
-            <div className="inline-block border border-slate-200 bg-white rounded-2xl overflow-hidden shadow-sm">
+          <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 text-slate-800 dark:text-slate-100">
+            <div className="inline-block border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl overflow-hidden shadow-sm">
               <table className="border-collapse text-xs font-mono">
                 <thead>
-                  <tr className="bg-slate-100/75 text-slate-500 border-b border-slate-200 text-[10px] uppercase tracking-wider font-bold">
-                    <th className="w-10 px-2 py-1.5 border-r border-slate-200 font-sans font-medium text-center"></th>
+                  <tr className="bg-slate-100/75 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase tracking-wider font-bold">
+                    <th className="w-10 px-2 py-1.5 border-r border-slate-200 dark:border-slate-800 font-sans font-medium text-center"></th>
                     {cols.map((col) => (
-                      <th key={col} className="w-32 px-3 py-1.5 border-r border-slate-200 font-medium text-center select-none">
+                      <th key={col} className="w-32 px-3 py-1.5 border-r border-slate-200 dark:border-slate-800 font-medium text-center select-none text-slate-500 dark:text-slate-400">
                         {col}
                       </th>
                     ))}
@@ -909,8 +938,8 @@ export default function SpreadsheetEditor({
                   {Array.from({ length: rowsCount }).map((_, index) => {
                     const rowNum = index + 1;
                     return (
-                      <tr key={rowNum} className="border-b border-slate-100 hover:bg-slate-50/40">
-                        <td className="bg-slate-100/40 text-slate-400 text-center border-r border-slate-200 select-none font-sans font-medium">
+                      <tr key={rowNum} className="border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50/40 dark:hover:bg-slate-800/20">
+                        <td className="bg-slate-100/40 dark:bg-slate-950/20 text-slate-415 dark:text-slate-500 text-center border-r border-slate-200 dark:border-slate-800 select-none font-sans font-medium">
                           {rowNum}
                         </td>
                         {cols.map((col) => {
@@ -924,11 +953,11 @@ export default function SpreadsheetEditor({
                             <td
                               key={col}
                               onClick={() => handleCellSelect(cellId)}
-                              className={`w-32 py-2 px-3 border-r border-slate-200 cursor-text relative transition-all min-h-8 truncate max-w-[8rem] ${
+                              className={`w-32 py-2 px-3 border-r border-slate-200 dark:border-slate-800 cursor-text relative transition-all min-h-8 truncate max-w-[8rem] ${
                                 isFocused 
-                                  ? 'ring-2 ring-indigo-605 ring-indigo-600 bg-indigo-50/10 z-10' 
+                                  ? 'ring-2 ring-indigo-600 bg-indigo-50/10 dark:bg-indigo-950/20 z-10' 
                                   : isFormula 
-                                    ? 'bg-indigo-50/10 font-medium' 
+                                    ? 'bg-indigo-50/10 dark:bg-indigo-950/10 font-medium' 
                                     : ''
                               }`}
                             >
@@ -937,16 +966,16 @@ export default function SpreadsheetEditor({
                                   type="text"
                                   value={cellInput}
                                   onChange={(e) => handleCellChange(e.target.value)}
-                                  className="absolute inset-0 w-full h-full px-3 py-1 border-0 focus:ring-0 focus:outline-none bg-white z-20 font-mono text-xs"
+                                  className="absolute inset-0 w-full h-full px-3 py-1 border-0 focus:ring-0 focus:outline-none bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 z-20 font-mono text-xs"
                                   autoFocus
                                 />
                               ) : (
                                 <div className="truncate flex items-center justify-between">
-                                  <span className={`w-full ${isFormula ? 'font-bold text-indigo-700' : 'text-slate-700'}`}>
+                                  <span className={`w-full ${isFormula ? 'font-bold text-indigo-700 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>
                                     {showVal}
                                   </span>
                                   {isFormula && (
-                                    <span className="text-[10px] text-indigo-400 font-sans select-none shrink-0 pl-1">ƒ</span>
+                                    <span className="text-[10px] text-indigo-400 dark:text-indigo-500 font-sans select-none shrink-0 pl-1">ƒ</span>
                                   )}
                                 </div>
                               )}

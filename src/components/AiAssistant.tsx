@@ -5,8 +5,10 @@ import {
   Paperclip, X, FileUp
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
-import { collection, query, where, getDocs, setDoc, doc, onSnapshot } from 'firebase/firestore';
+import { 
+  db, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, setDoc, doc, onSnapshot 
+} from '../lib/firebase.ts';
 
 interface AttachedFile {
   name: string;
@@ -86,6 +88,14 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
     }
 
     setDbSync('loading');
+    console.log('AiAssistant loading chat history, db:', db, 'userId:', userId);
+    if (!db) {
+      console.error('AiAssistant: db is undefined or not loaded!');
+      setDbSync('offline');
+      setMessages([getInitialMessage(persona)]);
+      return;
+    }
+    
     const q = query(
       collection(db, 'ai_chats'),
       where('userId', '==', userId),

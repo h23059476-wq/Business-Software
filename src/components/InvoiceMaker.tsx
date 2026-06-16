@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Receipt, Plus, Trash2, Calendar, FileText, User, Mail, DollarSign,
-  Download, Printer, PlusCircle, Trash, CheckCircle2, RefreshCw, AlertCircle, Eye, FileDown
+  Download, Printer, PlusCircle, Trash, CheckCircle2, RefreshCw, AlertCircle, Eye, FileDown,
+  FolderOpen
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
-  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, 
-  onSnapshot 
-} from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+  db, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { InvoiceData, InvoiceItem } from '../types.ts';
 import PdfPreviewModal from './PdfPreviewModal.tsx';
 
@@ -31,6 +31,7 @@ export default function InvoiceMaker({
   const [activeInvoice, setActiveInvoice] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [invoiceListOpen, setInvoiceListOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
 
   // Active Invoice Form Fields
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -581,52 +582,70 @@ Thank you for your business!
   };
 
   return (
-    <div className="flex h-full bg-slate-50/50" id="invoice-maker">
+    <div className="flex h-full bg-slate-50/50 dark:bg-slate-950/40 text-slate-800 dark:text-slate-105 relative" id="invoice-maker">
+      {/* Scroll shield on mobile */}
+      {invoiceListOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-15"
+          onClick={() => setInvoiceListOpen(false)}
+        />
+      )}
+
       {/* Search Sidebar lists */}
-      <div className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      <div className={`border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 transition-all duration-300 ${
+        invoiceListOpen 
+          ? 'w-64 opacity-100 visible' 
+          : 'w-0 opacity-0 invisible overflow-hidden border-r-0'
+      } fixed md:static inset-y-16 md:inset-y-auto left-0 z-20 h-[calc(100vh-64px)] md:h-auto shadow-lg md:shadow-none`}>
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
           <div className="flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-indigo-600" />
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Invoices</h3>
+            <Receipt className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-widest">Invoices</h3>
           </div>
           <button 
             onClick={createNewInvoice}
-            className="p-1 hover:bg-indigo-50 text-indigo-600 rounded-lg transition"
+            className="p-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg transition cursor-pointer"
             title="Create Invoice"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar bg-white dark:bg-slate-900">
           {loading ? (
-            <div className="text-xs text-slate-400 p-4 font-mono">Loading invoices...</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 p-4 font-mono">Loading invoices...</div>
           ) : invoices.length === 0 ? (
-            <div className="text-xs text-slate-400 p-4 text-center">
+            <div className="text-xs text-slate-400 dark:text-slate-500 p-4 text-center">
               No bills stored. Click '+' to make one!
             </div>
           ) : (
             invoices.map((inv) => (
               <div
                 key={inv.id}
-                onClick={() => setActiveInvoice(inv)}
+                onClick={() => {
+                  setActiveInvoice(inv);
+                  // Auto close drawer on mobile upon selection
+                  if (window.innerWidth < 768) {
+                    setInvoiceListOpen(false);
+                  }
+                }}
                 className={`group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${
                   activeInvoice?.id === inv.id 
-                    ? 'bg-indigo-50 text-indigo-800 font-bold border-l-2 border-indigo-600' 
-                    : 'hover:bg-slate-50 text-slate-600'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-805 dark:text-indigo-305 font-bold border-l-2 border-indigo-600' 
+                    : 'hover:bg-slate-55 dark:hover:bg-slate-800/40 text-slate-605 dark:text-slate-400'
                 }`}
               >
                 <div className="flex flex-col min-w-0 pr-2">
                   <div className="flex items-center gap-1">
                     <span className="font-semibold">{inv.invoiceNumber}</span>
-                    <span className="text-[10px] text-slate-400 font-normal">({inv.status})</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">({inv.status})</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 truncate">{inv.clientName}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{inv.clientName}</span>
                 </div>
                 <button
                   onClick={(e) => deleteInvoice(inv.id, e)}
                   type="button"
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-600 transition"
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-600 dark:hover:text-rose-450 transition cursor-pointer"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -638,16 +657,26 @@ Thank you for your business!
 
       {/* Invoice Details workspace */}
       {activeInvoice ? (
-        <div className="flex-1 flex flex-col min-w-0 bg-white">
+        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900">
           {/* Action Header */}
-          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/10">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Active Invoice:</span>
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between bg-slate-50/10 dark:bg-slate-950/15 gap-3">
+            <div className="flex items-center gap-2 grow">
+              {/* Sidebar toggle for mobile/tablets */}
+              <button
+                type="button"
+                onClick={() => setInvoiceListOpen(!invoiceListOpen)}
+                className="md:hidden p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-indigo-600 rounded-lg transition border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900 cursor-pointer"
+                title="Toggle Invoices Sidebar"
+              >
+                <FolderOpen className="h-4 w-4" />
+              </button>
+
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden xs:inline">Active Invoice:</span>
               <input
                 type="text"
                 value={invoiceNumber}
                 onChange={e => handleFieldChange('invoiceNumber', e.target.value)}
-                className="text-sm font-extrabold font-mono text-slate-800 bg-transparent hover:bg-slate-100 border-0 rounded px-2 py-0.5 focus:bg-white focus:ring-0 focus:border-indigo-305 focus:border-indigo-300 w-36 no-outline-focus transition"
+                className="text-sm font-extrabold font-mono text-slate-800 dark:text-slate-100 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border-0 rounded px-2 py-0.5 focus:bg-white dark:focus:bg-slate-950 focus:ring-0 focus:border-indigo-305 focus:border-indigo-300 w-36 no-outline-focus transition"
               />
             </div>
 

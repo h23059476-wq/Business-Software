@@ -4,10 +4,9 @@ import {
   Trash2, TrendingUp, TrendingDown, BookOpen, Clock, AlertCircle, FileText 
 } from 'lucide-react';
 import { 
-  collection, query, where, getDocs, addDoc, deleteDoc, doc, 
-  onSnapshot 
-} from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+  db, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, addDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { NoteData } from '../types.ts';
 
 interface DebitDepositNotesProps {

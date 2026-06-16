@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, FileText, Grid, Award, Receipt, ArrowRight, CornerDownLeft, X, Loader2, Sparkles, FolderOpen
 } from 'lucide-react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase.ts';
+import { db, collection, query, where, getDocs } from '../lib/firebase.ts';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CommandPaletteProps {

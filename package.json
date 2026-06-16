@@ -13,10 +13,31 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "dev:desktop": "electron .",
-    "build:desktop": "npm run build && electron-builder --win",
-    "dist:desktop": "npm run build && electron-builder --win",
-    "dist:desktop:dir": "npm run build && electron-builder --win dir",
-    "dist:linux": "npm run build && electron-builder --linux dir"
+    "build:desktop": "vite build && electron-builder --win",
+    "dist:desktop": "vite build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.worksuite.app",
+    "productName": "WorkSuite",
+    "icon": "electron/icons/icon.png",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "electron/icons/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WorkSuite"
+    }
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -40,6 +61,7 @@
     "electron": "^42.4.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
+    "jimp": "^1.6.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

@@ -4,10 +4,9 @@ import {
   Settings, Save, FileDown, ArrowUpDown, ChevronRight, AlertCircle, Edit2
 } from 'lucide-react';
 import { 
-  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, 
-  onSnapshot 
-} from 'firebase/firestore';
-import { db, handleFirestoreError } from '../lib/firebase.ts';
+  db, handleFirestoreError,
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { AccountSummaryData } from '../types.ts';
 import { jsPDF } from 'jspdf';
 
