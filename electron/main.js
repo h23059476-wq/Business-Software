@@ -98,9 +98,12 @@ function createWindow(startUrl) {
 
   // Open external links (and OAuth popups) in the user's default browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
-      return { action: 'allow' };
-    }
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+        return { action: 'allow' };
+      }
+    } catch (_) {}
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -122,6 +125,9 @@ async function bootstrap() {
   if (isDev) {
     // Connect to the host dev server started via `npm run dev`.
     startUrl = process.env.WORKSUITE_DEV_URL || 'http://localhost:3000';
+  } else if (serverPort !== null) {
+    // Server already running (e.g. macOS activate after closing all windows).
+    startUrl = `http://localhost:${serverPort}`;
   } else {
     try {
       serverPort = await startEmbeddedServer();
