@@ -53,7 +53,59 @@ Inside this folder, you will find:
 
 ---
 
+## 🧠 How the Desktop App Works (Architecture)
+
+Unlike a plain static-file Electron wrapper, WorkSuite ships its **full backend inside
+the desktop app**. When the packaged app launches, the Electron main process
+(`electron/main.js`):
+
+1. Starts the bundled Express server (`dist/server.cjs`) **in-process** on a free
+   local port.
+2. Loads the UI from `http://localhost:<port>` (instead of `file://`).
+
+This matters because:
+* The AI assistant calls relative endpoints like `/api/ai/assistant`; these only
+  work when a server is actually running.
+* Firebase Authentication and Firestore treat `localhost` as an authorised origin,
+  whereas `file://` origins are rejected — so the cloud sync + login flows work
+  correctly in the desktop build.
+
+No separate terminal or `npm run dev` is required for the packaged app — it is fully
+self-contained.
+
+---
+
+## 🔑 Enabling the AI Assistant on Desktop
+
+The Gemini API key is never bundled into the installer. The packaged app reads it at
+runtime from (in priority order):
+
+1. The `GEMINI_API_KEY` environment variable, or
+2. A `worksuite-config.json` file in the per-user app-data directory:
+   * **Windows:** `%APPDATA%\WorkSuite\worksuite-config.json`
+   ```json
+   { "geminiApiKey": "your_gemini_api_key_here" }
+   ```
+
+The rest of the suite (documents, spreadsheets, ledger notes, invoices, letters, PDF
+export) works fully without a key — only the AI assistant requires one.
+
+---
+
+## 🐧 Building the Windows Installer From Linux/macOS
+
+`electron-builder --win` (the NSIS installer target) requires **Wine** when building
+from a non-Windows host. On Debian/Ubuntu:
+```bash
+sudo dpkg --add-architecture i386
+sudo apt-get update
+sudo apt-get install -y wine wine64 wine32:i386
+```
+Building directly on Windows needs no extra tooling.
+
+---
+
 ## 🎨 Professional Visual Configurations Implemented
 1.  **Fully Custom Icon Brushing**: Integrated the high-definition square brand icon (`electron/icons/icon.ico`) as the default taskbar launch shortcut, execution window profile, and target installer identity.
 2.  **Immersive Screen Space**: Disabled boring standard system browser dropdown menus (`Menu.setApplicationMenu(null)`) to give you more visual area and a truly premium application atmosphere.
-3.  **Intelligent Route Resolution**: Configured Vite asset mapping dynamically (`base: './'`) to resolve file systems seamlessly (`file://` pathways) inside Electron's sandbox, preventing white screen errors.
+3.  **Intelligent Route Resolution**: Configured Vite asset mapping dynamically (`base: './'`) so the bundled assets resolve correctly when served over `http://localhost` inside the Electron shell.
