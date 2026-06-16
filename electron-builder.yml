@@ -1,0 +1,31 @@
+appId: com.worksuite.app
+productName: WorkSuite
+icon: electron/icons/icon.ico
+# Disable native rebuild / dependency pruning: this project has no native
+# modules, and letting electron-builder run npm against the project root can
+# rewrite package.json and package-lock.json.
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+extraMetadata:
+  main: electron/main.js
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+directories:
+  output: dist-desktop
+win:
+  target: nsis
+  icon: electron/icons/icon.ico
+linux:
+  target: dir
+  category: Office
+  icon: electron/icons/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: WorkSuite
