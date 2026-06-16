@@ -1,0 +1,23 @@
+{
+  "short_name": "WorkSuite",
+  "name": "WorkSuite AI - All-In-One Productivity Portal",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#1e1b4b",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "any"
+}

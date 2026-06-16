@@ -171,6 +171,9 @@ export default function App() {
   // Command palette and cross-module jump states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
@@ -271,6 +274,54 @@ export default function App() {
       } catch (e) {
         console.error(e);
       }
+    }
+  };
+
+  // Listen for PWA installation prompts
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setShowInstallBtn(false);
+      console.log('WorkSuite was installed successfully as a PWA!');
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'WorkSuite Installed',
+          message: 'WorkSuite AI is now installed as a desktop application. You can launch it from your dock or launcher!',
+          type: 'save'
+        }
+      }));
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response to the installation prompt: ${outcome}`);
+        setDeferredPrompt(null);
+        setShowInstallBtn(false);
+      } catch (err) {
+        console.error("Installation prompting failed:", err);
+      }
+    } else {
+      // Show elegant step-by-step installation instructions for platforms
+      // where automated prompt is locked or untriggered (like frame sandboxes or other browsers)
+      setIsInstallModalOpen(true);
     }
   };
 
@@ -901,6 +952,22 @@ export default function App() {
               <span className="hidden sm:inline">User Guide</span>
             </button>
 
+            {/* Native PWA Desktop Install Button */}
+            <button
+              onClick={handleInstallApp}
+              className={`p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition border cursor-pointer mr-1 flex items-center gap-1.5 font-bold text-xs ${
+                showInstallBtn 
+                  ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 animate-pulse' 
+                  : 'text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 border-indigo-100/80 dark:border-indigo-900/65 bg-indigo-50/30 dark:bg-indigo-950/10'
+              }`}
+              title="Download & Install WorkSuite AI on your desktop or laptop"
+            >
+              <Computer className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+              <span className="hidden sm:inline">
+                {showInstallBtn ? 'Install App' : 'Download App'}
+              </span>
+            </button>
+
             {/* Notification Center */}
             <div className="relative" id="notification-center-dropdown">
               <button
@@ -1153,6 +1220,89 @@ export default function App() {
         pdfGenerator={generateGuidePDF}
         fileName="WorkSuite_User_Guide.pdf"
       />
+
+      {isInstallModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" id="pwa-install-modal">
+          <div className="flex min-h-screen items-center justify-center p-4 text-center bg-slate-900/60 backdrop-blur-sm">
+            <div className="relative transform overflow-hidden rounded-2xl bg-white dark:bg-slate-900 text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-slate-200 dark:border-slate-800">
+              {/* Header */}
+              <div className="bg-indigo-600 px-6 py-5 dark:bg-indigo-950/60 flex items-center justify-between border-b border-indigo-500/20">
+                <div className="flex items-center gap-2 text-white">
+                  <Computer className="h-5 w-5 shrink-0" />
+                  <h3 className="text-sm font-bold uppercase tracking-wider">Install Desktop Application</h3>
+                </div>
+                <button
+                  onClick={() => setIsInstallModalOpen(false)}
+                  className="rounded-lg p-1 text-white hover:bg-white/10 transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-5 cursor-default">
+                <div className="flex items-start gap-3 p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/60 dark:border-indigo-900/30 rounded-xl">
+                  <Sparkles className="h-5 w-5 text-indigo-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
+                    WorkSuite supports full Progressive Web App (PWA) standard compilation. Installing it launches the application inside an isolated standalone native window with optimized runtime performance, offline local sandboxes, and zero browser tab clutter.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <p className="font-extrabold text-[11px] text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800/80 pb-1">
+                    Universal Installation Guide
+                  </p>
+
+                  {/* Step 1: Laptop Browser */}
+                  <div className="flex gap-3">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-extrabold text-slate-500 dark:text-slate-400">1</span>
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Chrome / Edge (Windows, Mac, Linux)</h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Look at your browser's address bar at the top-right. Click the <strong className="text-slate-700 dark:text-slate-300">"Install Computer/Monitor Icon"</strong> next to the bookmark star. Alternatively, click the three vertical dots menu and select <strong className="text-slate-700 dark:text-slate-300">"Save and share" &rarr; "Install WorkSuite AI"</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 2: Safari Mac */}
+                  <div className="flex gap-3">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-extrabold text-slate-500 dark:text-slate-400">2</span>
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Safari on macOS</h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        At the top-right of your Safari window, click the native <strong className="text-slate-700 dark:text-slate-350">Share Button</strong> (square icon with up-pointing arrow), scroll down, and select <strong className="text-indigo-600 dark:text-indigo-400 font-bold">"Add to Dock"</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 3: iOS/Android */}
+                  <div className="flex gap-3">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-extrabold text-slate-500 dark:text-slate-400">3</span>
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">iOS (Safari on iPhone / iPad)</h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Touch the <strong className="text-slate-700 dark:text-slate-300">Share Icon</strong> at the bottom of the Safari browser interface page, scroll down, and select <strong className="text-indigo-600 dark:text-indigo-400 font-bold">"Add to Home Screen"</strong>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 px-6 py-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-850">
+                <span className="text-[10px] text-slate-400 font-mono">App Version: v1.0.0 (Offline Sandboxed)</span>
+                <button
+                  type="button"
+                  onClick={() => setIsInstallModalOpen(false)}
+                  className="rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-extrabold text-white shadow hover:bg-indigo-700 pointer-events-auto cursor-pointer"
+                >
+                  Understood
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,6 +22,22 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Sync PWA icons to the public folder at server startup
+  try {
+    const publicDir = path.join(process.cwd(), "public");
+    if (!fs.existsSync(publicDir)) {
+      fs.mkdirSync(publicDir, { recursive: true });
+    }
+    const sourceIcon = path.join(process.cwd(), "src/assets/images/worksuite_app_icon_1781547652851.jpg");
+    const targetIcon = path.join(publicDir, "icon.png");
+    if (fs.existsSync(sourceIcon)) {
+      fs.copyFileSync(sourceIcon, targetIcon);
+      console.log("PWA icon synchronized: ", targetIcon);
+    }
+  } catch (err) {
+    console.warn("Non-blocking PWA icon copy skipped:", err);
+  }
+
   app.use(express.json());
 
   // API Route for AI Assistant
