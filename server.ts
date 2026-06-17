@@ -21,7 +21,7 @@ const ai = new GoogleGenAI({
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = 5000;
 
   // Sync PWA icons to the public folder at server startup
   try {
