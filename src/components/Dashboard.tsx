@@ -24,6 +24,7 @@ export default function Dashboard({ userId, userDisplayName, onNavigate }: Dashb
   const [totalsBilled, setTotalsBilled] = useState(0);
 
   useEffect(() => {
+    if (!db || !userId) return;
     const loadDashboardData = async () => {
       try {
         const qD = query(collection(db, 'documents'), where('userId', '==', userId));

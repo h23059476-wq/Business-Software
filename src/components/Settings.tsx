@@ -33,6 +33,7 @@ export default function Settings({ userId, email, displayName, photoURL }: Setti
 
   // Load user files stats
   useEffect(() => {
+    if (!db || !userId) return;
     const fetchStats = async () => {
       try {
         const qDocs = query(collection(db, 'documents'), where('userId', '==', userId));

@@ -16,29 +16,85 @@ const targetDbId = config?.firestoreDatabaseId || undefined;
 
 function initFirestore() {
   try {
+    // 1. Try to get the existing instance first to prevent re-initialization errors
     if (targetDbId) {
-      console.log('Initializing Firestore with custom databaseId:', targetDbId);
-      return initializeFirestore(app, {
-        experimentalForceLongPolling: true,
-      }, targetDbId);
+      try {
+        console.log('Attempting to retrieve existing custom Firestore instance:', targetDbId);
+        const existingDb = getFirestore(app, targetDbId);
+        if (existingDb) {
+          console.log('Successfully retrieved existing custom Firestore:', targetDbId);
+          return existingDb;
+        }
+      } catch (getErr) {
+        console.log('No existing custom database instance found, will attempt to initialize:', getErr);
+      }
     } else {
-      console.log('Initializing default Firestore with long polling');
-      return initializeFirestore(app, {
-        experimentalForceLongPolling: true,
-      });
+      try {
+        console.log('Attempting to retrieve existing default Firestore instance');
+        const existingDb = getFirestore(app);
+        if (existingDb) {
+          console.log('Successfully retrieved existing default Firestore');
+          return existingDb;
+        }
+      } catch (getErr) {
+        console.log('No existing default database instance found, will attempt to initialize:', getErr);
+      }
+    }
+
+    // 2. If not already retrieved, initialize with settings (long polling)
+    if (targetDbId) {
+      console.log('Initializing Firestore with custom databaseId and long polling:', targetDbId);
+      try {
+        return initializeFirestore(app, {
+          experimentalForceLongPolling: true,
+        }, targetDbId);
+      } catch (initErr: any) {
+        console.error('initializeFirestore custom databaseId failed, trying fallback getFirestore:', initErr?.message);
+        try {
+          return getFirestore(app, targetDbId);
+        } catch (fallbackErr: any) {
+          console.error('getFirestore with custom databaseId failed, falling back to default database:', fallbackErr?.message);
+          return getFirestore(app);
+        }
+      }
+    } else {
+      console.log('Initializing Firestore with default database and long polling');
+      try {
+        return initializeFirestore(app, {
+          experimentalForceLongPolling: true,
+        });
+      } catch (initErr: any) {
+        console.error('initializeFirestore default database failed, trying fallback getFirestore:', initErr?.message);
+        return getFirestore(app);
+      }
     }
   } catch (err: any) {
-    console.log('initializeFirestore already run or threw. Attempting fallback getFirestore:', err?.message || err);
+    console.error('Robust Firestore initialization encountered a top-level catch:', err?.message || err);
     try {
       return targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
-    } catch (fallbackErr: any) {
-      console.error('getFirestore failed:', fallbackErr?.message || fallbackErr);
-      return getFirestore(app);
+    } catch (finalErr: any) {
+      console.error('All Firestore fallback initialization methods failed catastrophically. Returning fallback dummy getFirestore as last resort:', finalErr?.message || finalErr);
+      try {
+        return getFirestore();
+      } catch {
+        throw finalErr;
+      }
     }
   }
 }
 
-export const db = initFirestore();
+const g = globalThis as any;
+let dbInstance;
+
+if (g.__firestore_db__) {
+  console.log('Reusing existing globally cached Firestore instance:', g.__firestore_db__);
+  dbInstance = g.__firestore_db__;
+} else {
+  dbInstance = initFirestore();
+  g.__firestore_db__ = dbInstance;
+}
+
+export const db = dbInstance;
 console.log('firebase.ts export: db =', db, 'isFirestore =', !!db && typeof db === 'object');
 export const auth = getAuth(app);
 

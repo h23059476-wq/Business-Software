@@ -155,6 +155,7 @@ export default function SpreadsheetEditor({
 
   // Read list from Firestore
   useEffect(() => {
+    if (!db || !userId) return;
     const q = query(
       collection(db, 'spreadsheets'),
       where('userId', '==', userId)

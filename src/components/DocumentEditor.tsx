@@ -49,6 +49,7 @@ export default function DocumentEditor({
 
   // Read documents from Firestore
   useEffect(() => {
+    if (!db || !userId) return;
     const q = query(
       collection(db, 'documents'),
       where('userId', '==', userId)

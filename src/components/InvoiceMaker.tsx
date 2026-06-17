@@ -103,6 +103,7 @@ export default function InvoiceMaker({
 
   // Read list from Firestore
   useEffect(() => {
+    if (!db || !userId) return;
     const q = query(
       collection(db, 'invoices'),
       where('userId', '==', userId)

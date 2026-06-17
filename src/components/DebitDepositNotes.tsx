@@ -114,6 +114,7 @@ export default function DebitDepositNotes({
 
   // Fetch from Firestore
   useEffect(() => {
+    if (!db || !userId) return;
     const q = query(
       collection(db, 'notes'),
       where('userId', '==', userId)
