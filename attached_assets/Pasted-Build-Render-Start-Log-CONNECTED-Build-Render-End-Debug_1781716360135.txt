@@ -1,0 +1,77 @@
+Build
+ Render Start 
+Log
+ "CONNECTED" 
+Build
+ Render End 
+Debug
+ "[vite] connecting..." 
+Log
+ "Firebase Initializing App with config:"  {
+  "projectId": "gen-lang-client-0390234134",
+  "appId": "1:683707653490:web:912aa2d35092e0052a11eb",
+  "firestoreDatabaseId": "ai-studio-90990970-8eaa-4d66-a561-3414efc4e345"
+} 
+Log
+ "Attempting to retrieve existing custom Firestore instance:"  "ai-studio-90990970-8eaa-4d66-a561-3414efc4e345" 
+Log
+ "Successfully retrieved existing custom Firestore:"  "ai-studio-90990970-8eaa-4d66-a561-3414efc4e345" 
+Log
+ "firebase.ts export: db ="  {
+  "app": {
+    "_isDeleted": false,
+    "_options": {
+      "projectId": "gen-lang-client-0390234134",
+      "appId": "1:683707653490:web:912aa2d35092e0052a11eb",
+      "apiKey": "AIzaSyAgzUBn3muv8iYp79yiQbZ1WCjP6XhJ014",
+      "authDomain": "gen-lang-client-0390234134.firebaseapp.com",
+      "firestoreDatabaseId": "ai-studio-90990970-8eaa-4d66-a561-3414efc4e345",
+      "storageBucket": "gen-lang-client-0390234134.firebasestorage.app",
+      "messagingSenderId": "683707653490",
+      "measurementId": ""
+    },
+    "_config": {
+      "name": "[DEFAULT]",
+      "automaticDataCollectionEnabled": true
+    },
+    "_name": "[DEFAULT]",
+    "_automaticDataCollectionEnabled": true,
+    "_container": {
+      "name": "[DEFAULT]",
+      "providers": {}
+    }
+  },
+  "databaseId": {
+    "projectId": "gen-lang-client-0390234134",
+    "database": "ai-studio-90990970-8eaa-4d66-a561-3414efc4e345"
+  },
+  "settings": {
+    "host": "firestore.googleapis.com",
+    "ssl": true,
+    "isUsingEmulator": false,
+    "ignoreUndefinedProperties": false,
+    "cacheSizeBytes": 41943040,
+    "experimentalForceLongPolling": false,
+    "experimentalAutoDetectLongPolling": true,
+    "experimentalLongPollingOptions": {},
+    "useFetchStreams": true
+  }
+}  "isFirestore ="  true 
+Log
+ "Synchronously exported Firestore and Auth initialized successfully." 
+Log
+ "Service Worker registered successfully:"  "https://ais-dev-au6yb25vccerj4tefcpxwb-529275122501.asia-southeast1.run.app/" 
+Error
+ "Uncaught FirebaseError: Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore" 
+Warning
+ "%s\n\n%s\n"  "An error occurred in the <AiAssistant> component."  "Consider adding an error boundary to your tree to customize error handling behavior.\nVisit https://react.dev/link/error-boundaries to learn more about error boundaries." 
+Error
+ "Uncaught FirebaseError: Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore" 
+Warning
+ "%s\n\n%s\n"  "An error occurred in the <AiAssistant> component."  "Consider adding an error boundary to your tree to customize error handling behavior.\nVisit https://react.dev/link/error-boundaries to learn more about error boundaries." 
+Error
+ "[vite] failed to connect to websocket (Error: WebSocket closed without opened.). " 
+Unhandled Rejection
+ "WebSocket closed without opened." 
+Log
+ "CONNECTED" 

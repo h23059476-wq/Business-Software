@@ -135,8 +135,14 @@ When advising on invoice line items or billing items, write a special item tag s
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const replitDomain = process.env.REPLIT_DEV_DOMAIN;
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: replitDomain
+          ? { protocol: 'wss', host: replitDomain, clientPort: 443 }
+          : true,
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
