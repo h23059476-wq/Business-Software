@@ -48,7 +48,7 @@ export default function CommandPalette({ isOpen, onClose, userId, onSelectItem }
   }, [isOpen]);
 
   const fetchWorkspaceItems = async () => {
-    if (!userId) return;
+    if (!userId || !db) return;
     setLoading(true);
     try {
       const itemsList: SearchItem[] = [];

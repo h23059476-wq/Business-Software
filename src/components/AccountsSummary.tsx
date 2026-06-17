@@ -38,6 +38,7 @@ export default function AccountsSummary({ userId }: AccountsSummaryProps) {
 
   // Listen to accounts
   useEffect(() => {
+    if (!db || !userId) return;
     const q = query(
       collection(db, 'accounts'),
       where('userId', '==', userId)

@@ -10,7 +10,6 @@ const targetDbId: string | undefined = config?.firestoreDatabaseId || undefined;
 
 export const db = targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
 export const auth = getAuth(app);
-
 export const googleAuthProvider = new GoogleAuthProvider();
 
 export enum OperationType {
@@ -29,8 +28,6 @@ export interface FirestoreErrorInfo {
   authInfo: {
     userId?: string | null;
     email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
   };
 }
 
@@ -38,14 +35,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
+      userId: auth.currentUser?.uid ?? null,
+      email: auth.currentUser?.email ?? null,
     },
     operationType,
-    path
+    path,
   };
-  console.error('Firestore Error:', JSON.stringify(errInfo));
+  console.error('Firestore Error:', operationType, path, errInfo.error);
   throw new Error(JSON.stringify(errInfo));
 }

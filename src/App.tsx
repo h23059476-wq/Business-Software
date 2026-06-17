@@ -1,4 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, ReactNode } from 'react';
+
+class AiErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error) { console.error('AiAssistant error caught by boundary:', error.message); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-6 text-center bg-indigo-950">
+          <p className="text-indigo-300 text-xs font-bold mb-2">AI Assistant Unavailable</p>
+          <p className="text-indigo-400/60 text-[10px]">A connection error occurred.</p>
+          <button
+            onClick={() => this.setState({ hasError: false })}
+            className="mt-4 text-[10px] px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg transition"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { 
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   signInWithPopup, updateProfile, signOut, User as FirebaseUser 
@@ -1195,11 +1221,13 @@ export default function App() {
               aiPanelOpen ? 'w-80 opacity-100' : 'w-0 opacity-0 overflow-hidden'
             }`}
           >
-            <AiAssistant 
-              activeContext={currentTab} 
-              onSuggestionAdopt={handleAdoptingAiText}
-              userId={user?.uid}
-            />
+            <AiErrorBoundary>
+              <AiAssistant 
+                activeContext={currentTab} 
+                onSuggestionAdopt={handleAdoptingAiText}
+                userId={user?.uid}
+              />
+            </AiErrorBoundary>
           </div>
         </div>
       </main>
