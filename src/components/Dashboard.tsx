@@ -3,7 +3,8 @@ import {
   FileText, Grid, Receipt, Award, DollarSign, Plus, ArrowRight, 
   TrendingUp, TrendingDown, BookOpen, Clock, Sparkles, FolderOpen, AlertCircle
 } from 'lucide-react';
-import { db, collection, query, where, getDocs, addDoc } from '../lib/firebase.ts';
+import { db } from '../lib/firebase.ts';
+import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { DocumentData, SpreadsheetData, NoteData, InvoiceData } from '../types.ts';
 
 interface DashboardProps {

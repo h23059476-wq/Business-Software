@@ -11,11 +11,6 @@ const targetDbId: string | undefined = config?.firestoreDatabaseId || undefined;
 export const db = targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
 export const auth = getAuth(app);
 
-export { 
-  collection, query, where, getDocs, addDoc, setDoc, doc, onSnapshot, 
-  updateDoc, deleteDoc, getDoc, orderBy, limit 
-} from 'firebase/firestore';
-
 export const googleAuthProvider = new GoogleAuthProvider();
 
 export enum OperationType {

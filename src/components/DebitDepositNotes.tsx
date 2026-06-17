@@ -3,10 +3,8 @@ import {
   ArrowUpRight, ArrowDownLeft, Plus, DollarSign, Calendar, 
   Trash2, TrendingUp, TrendingDown, BookOpen, Clock, AlertCircle, FileText 
 } from 'lucide-react';
-import { 
-  db, handleFirestoreError, OperationType,
-  collection, query, where, getDocs, addDoc, deleteDoc, doc, onSnapshot
-} from '../lib/firebase.ts';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { NoteData } from '../types.ts';
 
 interface DebitDepositNotesProps {

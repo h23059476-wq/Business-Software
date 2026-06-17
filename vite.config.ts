@@ -15,7 +15,7 @@ export default defineConfig(() => {
     server: {
       host: '0.0.0.0',
       port: 5000,
-      allowedHosts: true,
+      allowedHosts: true as const,
       hmr: process.env.DISABLE_HMR === 'true' ? false : {
         clientPort: 443,
         protocol: 'wss',

@@ -5,10 +5,8 @@ import {
   Paperclip, X, FileUp
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { 
-  db, handleFirestoreError, OperationType,
-  collection, query, where, getDocs, setDoc, doc, onSnapshot 
-} from '../lib/firebase.ts';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+import { collection, query, where, getDocs, setDoc, doc, onSnapshot } from 'firebase/firestore';
 
 interface AttachedFile {
   name: string;
