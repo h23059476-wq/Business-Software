@@ -38,6 +38,8 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
   const [localProgressPercent, setLocalProgressPercent] = useState<number>(0);
   const [localActive, setLocalActive] = useState(false);
 
+  const handleSendRef = useRef<any>(null);
+
   // Sync mode states
   useEffect(() => {
     setLocalActive(isLocalAiActive());
@@ -49,7 +51,14 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
     const handlePromptSuggest = (e: Event) => {
       const customEvent = e as CustomEvent;
       if (customEvent.detail && typeof customEvent.detail.text === 'string') {
-        setPrompt(customEvent.detail.text);
+        const text = customEvent.detail.text;
+        setPrompt(text);
+        if (customEvent.detail.autoSubmit && handleSendRef.current) {
+          setTimeout(() => {
+            handleSendRef.current(undefined, text);
+            setPrompt(''); // clear input prompt once active
+          }, 150);
+        }
       }
     };
     
@@ -336,6 +345,11 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
       setLoading(false);
     }
   };
+
+  // Keep handleSend ref synchronized on every render to avoid stale closures
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  });
 
   const handleResetChat = async () => {
     if (loading) return;

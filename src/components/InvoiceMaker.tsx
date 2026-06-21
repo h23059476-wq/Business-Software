@@ -953,7 +953,7 @@ Thank you for your business!
                   <b>AI Assistant Advice:</b> Generative AI tools help match invoice line descriptions with outline prompts perfectly. Select the helper button to fetch summaries.
                 </div>
                 <button
-                  onClick={() => onSelectContentForAi(`Generate a professional bill line-item list for client "${clientName}" related to tech advisor hours.`)}
+                  onClick={() => onSelectContentForAi(`Generate a professional bill line-item list for client "${clientName || 'Valued Corporate Client'}" related to tech advisor hours.`)}
                   type="button"
                   className="shrink-0 inline-flex items-center gap-1.5 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition"
                 >

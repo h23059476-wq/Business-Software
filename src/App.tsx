@@ -623,11 +623,24 @@ export default function App() {
     setAiPanelOpen(true);
     setSuggestionText(null); // clear old before inserting new prompt
     
-    const formattedText = `Explain, format, or improve the following selected item: "${text}"`;
+    let formattedText = text;
+    // Auto-submit direct commands like Generate, Active cell, or Financial records
+    const isDirectCommand = 
+      text.startsWith('Generate') || 
+      text.startsWith('Active') || 
+      text.startsWith('Financial') ||
+      text.length > 250;
+
+    if (!isDirectCommand) {
+      formattedText = `Explain, format, or improve the following selected item: "${text}"`;
+    }
     
     // Dispatch custom event to notify the React state in AiAssistant component
     window.dispatchEvent(new CustomEvent('ai-prompt-suggest', {
-      detail: { text: formattedText }
+      detail: { 
+        text: formattedText,
+        autoSubmit: isDirectCommand
+      }
     }));
 
     // Auto focus the prompt input field
