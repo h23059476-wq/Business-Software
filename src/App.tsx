@@ -1,30 +1,4 @@
-import React, { useState, useEffect, Component, ReactNode } from 'react';
-
-class AiErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: Error) { console.error('AiAssistant error caught by boundary:', error.message); }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full p-6 text-center bg-indigo-950">
-          <p className="text-indigo-300 text-xs font-bold mb-2">AI Assistant Unavailable</p>
-          <p className="text-indigo-400/60 text-[10px]">A connection error occurred.</p>
-          <button
-            onClick={() => this.setState({ hasError: false })}
-            className="mt-4 text-[10px] px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg transition"
-          >
-            Retry
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+import React, { useState, useEffect } from 'react';
 import { 
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   signInWithPopup, updateProfile, signOut, User as FirebaseUser 
@@ -34,7 +8,7 @@ import {
   LogOut, Sparkles, MessageSquare, Loader2, RefreshCw, Smartphone, 
   Computer, ChevronRight, Lock, Eye, EyeOff, UserCheck, AlertTriangle,
   Mail, Columns, ExternalLink, Columns2, Search, Sun, Moon,
-  Bell, Trash, Info, X, Check, Save, BookOpen
+  Bell, Trash, Info, X, Check, Save, BookOpen, Key, Cpu
 } from 'lucide-react';
 import { auth, googleAuthProvider } from './lib/firebase.ts';
 
@@ -48,10 +22,13 @@ import Settings from './components/Settings.tsx';
 import AiAssistant from './components/AiAssistant.tsx';
 import CommandPalette from './components/CommandPalette.tsx';
 import PdfPreviewModal from './components/PdfPreviewModal.tsx';
+import ApiSettings from './components/ApiSettings.tsx';
+import AiEngineStatusModal from './components/AiEngineStatusModal.tsx';
 import { generateGuidePDF } from './lib/generateGuide.ts';
 import firebaseConfig from '../firebase-applet-config.json';
+import { getLocalAiStatus, getLocalAiProgress, subscribeToAiProgress } from './lib/aiService.ts';
 
-type TabType = 'dashboard' | 'documents' | 'spreadsheet' | 'notes' | 'invoices' | 'settings';
+type TabType = 'dashboard' | 'documents' | 'spreadsheet' | 'notes' | 'invoices' | 'settings' | 'api-settings';
 
 interface AppNotification {
   id: string;
@@ -106,6 +83,65 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
+  const [isAiEngineModalOpen, setIsAiEngineModalOpen] = useState(false);
+
+  const [localDownloadState, setLocalDownloadState] = useState<{
+    status: 'idle' | 'downloading' | 'paused' | 'ready' | 'error';
+    progress: number;
+    text: string;
+  }>({
+    status: 'idle',
+    progress: 0,
+    text: ''
+  });
+
+  useEffect(() => {
+    const checkStatus = () => {
+      const status = getLocalAiStatus();
+      const progressReport = getLocalAiProgress();
+      setLocalDownloadState(prev => ({
+        ...prev,
+        status,
+        progress: Math.floor(progressReport.progress * 133.3) / 133.3, // guard values
+        text: progressReport.text
+      }));
+    };
+
+    const unsubscribe = subscribeToAiProgress((report) => {
+      setLocalDownloadState(prev => ({
+        ...prev,
+        progress: Math.min(100, Math.floor(report.progress * 100)),
+        text: report.text
+      }));
+    });
+
+    const handleStarted = () => {
+      setLocalDownloadState(prev => ({ ...prev, status: 'downloading' }));
+    };
+    const handleCompleted = () => {
+      setLocalDownloadState(prev => ({ ...prev, status: 'ready' }));
+    };
+    const handleFailed = () => {
+      setLocalDownloadState(prev => ({ ...prev, status: 'error' }));
+    };
+
+    window.addEventListener('ai-download-started', handleStarted);
+    window.addEventListener('ai-download-completed', handleCompleted);
+    window.addEventListener('ai-download-failed', handleFailed);
+    window.addEventListener('ai-model-swapped', checkStatus);
+    window.addEventListener('open-ai-engine-modal', () => setIsAiEngineModalOpen(true));
+
+    checkStatus();
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('ai-download-started', handleStarted);
+      window.removeEventListener('ai-download-completed', handleCompleted);
+      window.removeEventListener('ai-download-failed', handleFailed);
+      window.removeEventListener('ai-model-swapped', checkStatus);
+      window.removeEventListener('open-ai-engine-modal', () => setIsAiEngineModalOpen(true));
+    };
+  }, []);
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     try {
@@ -210,6 +246,21 @@ export default function App() {
   const [secondaryTab, setSecondaryTab] = useState<TabType>('spreadsheet');
   const [standaloneMode, setStandaloneMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Detect mobile viewport on mount and auto-collapse panels
+  useEffect(() => {
+    const checkMobileView = () => {
+      const isMobile = window.innerWidth < 1024;
+      if (isMobile) {
+        setSidebarOpen(false);
+        setAiPanelOpen(false);
+      }
+    };
+    checkMobileView();
+    // Also attach resize listener to auto-adjust when rotating
+    window.addEventListener('resize', checkMobileView);
+    return () => window.removeEventListener('resize', checkMobileView);
+  }, []);
 
   // Toggle both side panels helper
   const handleToggleBothPanels = () => {
@@ -572,12 +623,20 @@ export default function App() {
     setAiPanelOpen(true);
     setSuggestionText(null); // clear old before inserting new prompt
     
-    // Auto populate the prompt input field by triggering custom context
-    const aiPromptInput = document.querySelector('#ai-assistant-container input') as HTMLInputElement;
-    if (aiPromptInput) {
-      aiPromptInput.value = `Explain, format, or improve the following selected item: "${text}"`;
-      aiPromptInput.focus();
-    }
+    const formattedText = `Explain, format, or improve the following selected item: "${text}"`;
+    
+    // Dispatch custom event to notify the React state in AiAssistant component
+    window.dispatchEvent(new CustomEvent('ai-prompt-suggest', {
+      detail: { text: formattedText }
+    }));
+
+    // Auto focus the prompt input field
+    setTimeout(() => {
+      const aiPromptInput = document.querySelector('#ai-assistant-container input[type="text"]') as HTMLInputElement;
+      if (aiPromptInput) {
+        aiPromptInput.focus();
+      }
+    }, 120);
   };
 
   const handleAdoptingAiText = (text: string) => {
@@ -777,6 +836,8 @@ export default function App() {
           <LetterMaker 
             userId={user.uid} 
             userDisplayName={user.displayName || 'WorkSuite Colleague'} 
+            initialAdoptedText={suggestionText}
+            clearAdoptedText={clearAdoptedText}
           />
         );
       case 'documents':
@@ -828,6 +889,10 @@ export default function App() {
             photoURL={user.photoURL || undefined}
           />
         );
+      case 'api-settings':
+        return (
+          <ApiSettings />
+        );
     }
   };
 
@@ -838,79 +903,91 @@ export default function App() {
     { id: 'notes', label: 'Ledger Note', icon: Award },
     { id: 'invoices', label: 'Invoice Maker', icon: Receipt },
     { id: 'settings', label: 'Account Profile', icon: SettingsIcon },
+    { id: 'api-settings', label: 'Gemini API Key', icon: Key },
   ] as const;
 
   return (
     <div className="h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden transition-colors duration-200" id="worksuite-workstation-main">
       {/* Sidebar Navigation */}
       {!standaloneMode && sidebarOpen && (
-        <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0" id="worksuite-sidebar-aside">
-          {/* Core Suite Logo Header */}
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">
-                <Sparkles className="h-4.5 w-4.5" />
-              </div>
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-slate-800 dark:text-slate-100 uppercase leading-none">WorkSuite</h1>
-                <span className="text-[9px] text-indigo-500 dark:text-indigo-400 font-bold uppercase tracking-wider block mt-1">AI Productivity</span>
+        <>
+          {/* Mobile Overlay Backdrop */}
+          <div 
+            className="md:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-30 transition-opacity"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside className="fixed md:static inset-y-0 left-0 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 z-40 h-full shadow-2xl md:shadow-none" id="worksuite-sidebar-aside">
+            {/* Core Suite Logo Header */}
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">
+                  <Sparkles className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <h1 className="text-base font-bold tracking-tight text-slate-800 dark:text-slate-100 uppercase leading-none">WorkSuite</h1>
+                  <span className="text-[9px] text-indigo-500 dark:text-indigo-400 font-bold uppercase tracking-wider block mt-1">AI Productivity</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Navigation list */}
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentTab === item.id;
-              return (
+            {/* Navigation list */}
+            <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setCurrentTab(item.id);
+                      // clear AI insert buffer
+                      setSuggestionText(null);
+                      // Auto-close sidebar on mobile viewports
+                      if (window.innerWidth < 768) {
+                        setSidebarOpen(false);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      isActive 
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold' 
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <Icon className="h-4.5 w-4.5 shrink-0" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Logged in User widget in Sidebar footer */}
+            <div className="p-4 mt-auto border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-900/40">
+              <div className="flex items-center gap-3 p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 text-xs shrink-0 select-none border border-slate-300 dark:border-slate-700">
+                  {(user.displayName || user.email || 'W').charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate leading-tight">{user.displayName || 'Work Colleague'}</p>
+                  <p className="text-[9px] text-slate-500 dark:text-slate-400 truncate leading-none mt-0.5">{user.email}</p>
+                </div>
                 <button
-                  key={item.id}
-                  onClick={() => {
-                    setCurrentTab(item.id);
-                    // clear AI insert buffer
-                    setSuggestionText(null);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    isActive 
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold' 
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                  }`}
+                  onClick={handleLogout}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 rounded-lg transition shrink-0 cursor-pointer"
+                  title="Log Out Profile"
                 >
-                  <Icon className="h-4.5 w-4.5 shrink-0" />
-                  <span>{item.label}</span>
+                  <LogOut className="h-3.5 w-3.5" />
                 </button>
-              );
-            })}
-          </nav>
-
-          {/* Logged in User widget in Sidebar footer */}
-          <div className="p-4 mt-auto border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-900/40">
-            <div className="flex items-center gap-3 p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 text-xs shrink-0 select-none border border-slate-300 dark:border-slate-700">
-                {(user.displayName || user.email || 'W').charAt(0).toUpperCase()}
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate leading-tight">{user.displayName || 'Work Colleague'}</p>
-                <p className="text-[9px] text-slate-500 dark:text-slate-400 truncate leading-none mt-0.5">{user.email}</p>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 rounded-lg transition shrink-0 cursor-pointer"
-                title="Log Out Profile"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </button>
             </div>
-          </div>
-        </aside>
+          </aside>
+        </>
       )}
 
       {/* Main viewport area */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Workspace Toolbar Header */}
-        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 shrink-0 z-10 transition-colors duration-200">
-          <div className="flex items-center gap-3">
+        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-3 sm:px-6 md:px-8 gap-2 shrink-0 z-10 transition-colors duration-200">
+          <div className="flex items-center gap-2">
             {!standaloneMode && (
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -924,20 +1001,20 @@ export default function App() {
                 <Layout className="h-4 w-4" />
               </button>
             )}
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Active Tool:</h2>
-              <span className="text-xs font-extrabold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-100/60 dark:border-indigo-900/40 uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none hidden lg:block select-none">Active Tool:</h2>
+              <span className="text-[11px] sm:text-xs font-extrabold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 sm:px-2.5 py-1 rounded-full border border-indigo-100/60 dark:border-indigo-900/40 uppercase tracking-wider truncate">
                 {currentTab === 'dashboard' ? 'Letter Center' : currentTab === 'documents' ? 'Word Processor' : currentTab === 'spreadsheet' ? 'List Grid' : currentTab === 'notes' ? 'Ledger Note' : currentTab === 'invoices' ? 'Invoice Maker' : 'Account Profile'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* Command Palette Trigger (Desktop search box style) */}
             <button
               id="command-palette-trigger"
               onClick={() => setIsPaletteOpen(true)}
-              className="hidden md:flex items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-650 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs px-3 py-1.5 rounded-lg transition-all shadow-inner relative select-none w-48 text-left cursor-pointer mr-1"
+              className="hidden md:flex items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-650 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs px-3 py-1.5 rounded-lg transition-all shadow-inner relative select-none w-48 text-left cursor-pointer mr-0.5"
               title="Search document titles, clients, and transaction ledger notes (Ctrl+K)"
             >
               <Search className="h-3.5 w-3.5 text-slate-400" />
@@ -949,7 +1026,7 @@ export default function App() {
             <button
               id="command-palette-trigger-mobile"
               onClick={() => setIsPaletteOpen(true)}
-              className="md:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer mr-1"
+              className="md:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer mr-0.5"
               title="Search registry"
             >
               <Search className="h-4 w-4" />
@@ -958,7 +1035,7 @@ export default function App() {
             {/* Global Theme Toggle for Dark Mode */}
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer mr-1"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer mr-0.5"
               title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
               {theme === 'dark' ? (
@@ -968,27 +1045,43 @@ export default function App() {
               )}
             </button>
 
+            {/* AI Engine Status Orchestrator Button */}
+            <button
+              onClick={() => setIsAiEngineModalOpen(true)}
+              className={`p-2 rounded-lg transition border cursor-pointer mr-0.5 flex items-center justify-center gap-1.5 font-bold text-xs shadow-sm ${
+                localDownloadState.status === 'downloading'
+                  ? 'text-amber-600 border-amber-200 bg-amber-55/40 dark:text-amber-400 dark:border-amber-900 dark:bg-amber-950/25 animate-pulse'
+                  : localDownloadState.status === 'ready'
+                  ? 'text-emerald-600 border-emerald-200 bg-emerald-50/50 dark:text-emerald-400 dark:border-emerald-900 dark:bg-emerald-950/25'
+                  : 'text-slate-600 border-slate-200 dark:text-slate-400 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-850'
+              }`}
+              title="AI Engine Status Orchestrator Panel"
+            >
+              <Cpu className="h-4 w-4" />
+              <span className="hidden sm:inline">AI Engine</span>
+            </button>
+
             {/* Interactive User Guide PDF Button */}
             <button
               onClick={() => setIsGuideOpen(true)}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 rounded-lg transition border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 cursor-pointer mr-1 flex items-center gap-1.5 font-bold text-xs"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 rounded-lg transition border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 cursor-pointer mr-0.5 flex items-center justify-center gap-1.5 font-bold text-xs"
               title="Official User Guide Handbook PDF"
             >
               <BookOpen className="h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">User Guide</span>
             </button>
 
-            {/* Native PWA Desktop Install Button */}
+            {/* Native PWA Install Button */}
             <button
               onClick={handleInstallApp}
-              className={`p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition border cursor-pointer mr-1 flex items-center gap-1.5 font-bold text-xs ${
+              className={`flex p-2 rounded-lg transition border cursor-pointer mr-0.5 items-center gap-1.5 font-bold text-xs shadow-sm ${
                 showInstallBtn 
-                  ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 animate-pulse' 
-                  : 'text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 border-indigo-100/80 dark:border-indigo-900/65 bg-indigo-50/30 dark:bg-indigo-950/10'
+                  ? 'text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/30 animate-pulse hover:bg-emerald-100 dark:hover:bg-emerald-950/50' 
+                  : 'text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/80 dark:hover:bg-indigo-950/40 animate-pulse'
               }`}
-              title="Download & Install WorkSuite AI on your desktop or laptop"
+              title="Download & Install WorkSuite AI on your desktop or phone"
             >
-              <Computer className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+              <Computer className={`h-4 w-4 shrink-0 ${showInstallBtn ? 'text-emerald-500' : 'text-indigo-500 dark:text-indigo-400'}`} />
               <span className="hidden sm:inline">
                 {showInstallBtn ? 'Install App' : 'Download App'}
               </span>
@@ -998,7 +1091,7 @@ export default function App() {
             <div className="relative" id="notification-center-dropdown">
               <button
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer mr-1 relative"
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer mr-0.5 relative"
                 title="Notifications"
               >
                 <Bell className="h-4 w-4" />
@@ -1013,7 +1106,7 @@ export default function App() {
               {isNotificationsOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setIsNotificationsOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden z-40">
+                  <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden z-40">
                     <div className="p-4 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-xs text-slate-700 dark:text-slate-300 tracking-wider">NOTIFICATIONS</span>
@@ -1116,38 +1209,31 @@ export default function App() {
               )}
             </div>
 
-            {/* Toggle Multi-window Panel split view */}
+            {/* Toggle Multi-window Panel split view (Widescreen layout exclusive) */}
             <button
               onClick={() => setSplitWorkspaceMode(!splitWorkspaceMode)}
-              className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer ${
-                splitWorkspaceMode 
-                  ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900' 
-                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
+              className="hidden lg:inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               title="Split workspace menu view to open multiple panels side-by-side"
             >
               <Columns2 className="h-4 w-4" />
-              <span className="hidden sm:inline">{splitWorkspaceMode ? "Close Dual Pane" : "Launch Split Screen"}</span>
+              <span>{splitWorkspaceMode ? "Close Dual Pane" : "Launch Split Screen"}</span>
             </button>
 
-            {/* Detach View Standalone tab link */}
+            {/* Detach View Standalone tab link (Desktop tab exclusive) */}
             <button
               onClick={handleLaunchNewWindow}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer"
+              className="hidden lg:block p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg transition border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer"
               title="Shift to another window (opens view in a browser tab)"
             >
               <ExternalLink className="h-4.5 w-4.5" />
             </button>
 
-            <div className="h-6 w-[1.5px] bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block"></div>
+            <div className="h-6 w-[1.5px] bg-slate-200 dark:bg-slate-800 mx-1 hidden lg:block"></div>
 
+            {/* Toggle Dual Panels controls (Desktop exclusive) */}
             <button
               onClick={handleToggleBothPanels}
-              className={`inline-flex items-center gap-1.5 py-2 px-4 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer ${
-                (!sidebarOpen && !aiPanelOpen)
-                  ? 'bg-amber-600 text-white hover:bg-amber-700 shadow-amber-100 dark:shadow-none'
-                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
+              className="hidden xl:inline-flex items-center gap-1.5 py-2 px-4 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               title={(!sidebarOpen && !aiPanelOpen) ? "Show both side panels (Sidebar + AI)" : "Hide both sidebar navigation and AI assistant panel"}
             >
               <Layout className="h-4 w-4" />
@@ -1156,14 +1242,14 @@ export default function App() {
 
             <button
               onClick={() => setAiPanelOpen(!aiPanelOpen)}
-              className={`inline-flex items-center gap-1.5 py-2 px-4 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer ${
                 aiPanelOpen 
-                  ? 'bg-indigo-600 text-white shadow-indigo-100 dark:shadow-none hover:bg-indigo-700' 
+                  ? 'bg-indigo-600 text-white shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 font-extrabold' 
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
-              <MessageSquare className="h-4 w-4" />
-              <span>AI Assistant</span>
+              <MessageSquare className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline">AI Assistant</span>
             </button>
           </div>
         </header>
@@ -1216,18 +1302,24 @@ export default function App() {
           </div>
 
           {/* AI Panel sidebar container */}
+          {aiPanelOpen && (
+            <div 
+              className="md:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-35 transition-opacity" 
+              onClick={() => setAiPanelOpen(false)}
+            />
+          )}
           <div 
-            className={`transition-all duration-300 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 ${
-              aiPanelOpen ? 'w-80 opacity-100' : 'w-0 opacity-0 overflow-hidden'
+            className={`transition-all duration-300 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 ${
+              aiPanelOpen 
+                ? 'fixed md:static inset-y-0 right-0 w-80 z-40 border-l opacity-100 shadow-2xl md:shadow-none h-full' 
+                : 'w-0 opacity-0 overflow-hidden'
             }`}
           >
-            <AiErrorBoundary>
-              <AiAssistant 
-                activeContext={currentTab} 
-                onSuggestionAdopt={handleAdoptingAiText}
-                userId={user?.uid}
-              />
-            </AiErrorBoundary>
+            <AiAssistant 
+              activeContext={currentTab} 
+              onSuggestionAdopt={handleAdoptingAiText}
+              userId={user?.uid}
+            />
           </div>
         </div>
       </main>
@@ -1331,6 +1423,48 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Floating Global Background Download Progress Overlay */}
+      {localDownloadState.status === 'downloading' && (
+        <div 
+          onClick={() => setIsAiEngineModalOpen(true)}
+          className="fixed bottom-6 right-6 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl p-4.5 w-80 space-y-3 transition-transform duration-300 ease-out translate-y-0 cursor-pointer hover:scale-[1.01] hover:border-indigo-400 dark:hover:border-indigo-500 active:scale-95 hover:shadow-indigo-500/10"
+          id="global-ai-engine-download-indicator"
+          title="Click to view AI Engine Center & check file integrity"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
+              <RefreshCw className="h-4 w-4 animate-spin text-indigo-500" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h5 className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">Downloading AI Engine</h5>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5 font-medium leading-none">{localDownloadState.text}</p>
+            </div>
+            <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 font-mono">
+              {localDownloadState.progress}%
+            </span>
+          </div>
+
+          <div className="space-y-1.55">
+            <div className="w-full bg-slate-150 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className="bg-indigo-600 dark:bg-indigo-500 h-full rounded-full transition-all duration-300" 
+                style={{ width: `${localDownloadState.progress}%` }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-500 italic leading-none">
+              <span>Backstage compiling...</span>
+              <span>You can continue work!</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Engine Status detail center orchestrator modal */}
+      <AiEngineStatusModal 
+        isOpen={isAiEngineModalOpen}
+        onClose={() => setIsAiEngineModalOpen(false)}
+      />
     </div>
   );
 }

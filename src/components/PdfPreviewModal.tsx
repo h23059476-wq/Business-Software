@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  X, FileDown, Printer, RefreshCw, AlertCircle, Eye, Check, Loader2 
+  X, FileDown, Printer, RefreshCw, AlertCircle, Eye, Check, Loader2, ExternalLink 
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { motion, AnimatePresence } from 'motion/react';
@@ -144,29 +144,56 @@ export default function PdfPreviewModal({
 
         {/* Modal Main Grid */}
         <div className="flex-1 flex flex-col md:flex-row min-h-0 bg-slate-100/50 dark:bg-slate-950/20">
-          
-          {/* Left panel: PDF frame viewport */}
-          <div className="flex-1 h-full min-h-0 relative p-6 max-md:p-3 flex items-center justify-center bg-slate-100/30 dark:bg-slate-950/30">
+                   {/* Left panel: PDF frame viewport */}
+          <div className="flex-1 h-full min-h-0 relative p-6 max-md:p-3 flex flex-col bg-slate-100/30 dark:bg-slate-950/30">
             {loading ? (
-              <div className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 font-mono text-xs gap-3">
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 font-mono text-xs gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400" />
                 <span>Compiling pixel-perfect page vectors...</span>
               </div>
             ) : error ? (
-              <div className="max-w-md p-6 bg-red-50 dark:bg-red-955/20 border border-red-100 dark:border-red-900/30 rounded-xl text-center text-red-650 dark:text-red-400 text-xs flex flex-col items-center gap-2.5">
-                <AlertCircle className="h-8 w-8 text-red-500" />
-                <p className="font-semibold">{error}</p>
+              <div className="flex-1 flex items-center justify-center">
+                <div className="max-w-md p-6 bg-red-50 dark:bg-red-955/20 border border-red-100 dark:border-red-900/30 rounded-xl text-center text-red-650 dark:text-red-400 text-xs flex flex-col items-center gap-2.5">
+                  <AlertCircle className="h-8 w-8 text-red-500" />
+                  <p className="font-semibold">{error}</p>
+                </div>
               </div>
             ) : pdfUrl ? (
-              <div className="w-full h-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-805 shadow-lg bg-white dark:bg-slate-900">
-                <iframe 
-                  src={`${pdfUrl}#toolbar=0&navpanes=0`} 
-                  className="w-full h-full border-none" 
-                  title="PDF Live Engine View"
-                />
+              <div className="flex-1 flex flex-col min-h-0 w-full h-full">
+                {/* Embedded Preview Notice & Action Bypass */}
+                <div className="bg-amber-55/70 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-900/30 rounded-xl p-3.5 mb-4 text-xs text-slate-750 dark:text-slate-350 flex items-start gap-3 shadow-xs">
+                  <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="space-y-1.5 flex-1 leading-relaxed">
+                    <p className="font-bold text-amber-850 dark:text-amber-400 text-xs">Sandbox Iframe Preview Restriction</p>
+                    <p className="text-[11px] text-slate-550 dark:text-slate-400">
+                      Google Chrome and standard browsers block PDF plug-in displays from rendering inside sandboxed nested development iframes. If the viewer canvas shows empty or dark grey, click the bypass action below to view the full document instantly.
+                    </p>
+                    <div className="pt-1 flex flex-wrap items-center gap-2.5">
+                      <a 
+                        href={pdfUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 dark:bg-indigo-700 hover:bg-indigo-700 dark:hover:bg-indigo-800 text-white font-black rounded-lg text-[10px] transition shadow-xs cursor-pointer select-none"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <span>Open PDF in New Tab</span>
+                      </a>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">(Loads perfectly without security constraints)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PDF Container View */}
+                <div className="flex-1 min-h-0 w-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-805 shadow-lg bg-white dark:bg-slate-900">
+                  <iframe 
+                    src={`${pdfUrl}#toolbar=0&navpanes=0`} 
+                    className="w-full h-full border-none bg-white dark:bg-slate-900" 
+                    title="PDF Live Engine View"
+                  />
+                </div>
               </div>
             ) : (
-              <div className="text-slate-400 dark:text-slate-500 text-xs font-mono">No document compiled.</div>
+              <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 text-xs font-mono">No document compiled.</div>
             )}
           </div>
 

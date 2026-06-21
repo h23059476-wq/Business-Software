@@ -5,8 +5,11 @@ import {
   Paperclip, X, FileUp
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
-import { collection, query, where, getDocs, setDoc, doc, onSnapshot } from 'firebase/firestore';
+import { queryAI, isLocalAiActive, getLocalModelId } from '../lib/aiService.ts';
+import { 
+  db, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, setDoc, doc, onSnapshot 
+} from '../lib/firebase.ts';
 
 interface AttachedFile {
   name: string;
@@ -28,6 +31,38 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
   const [persona, setPersona] = useState<PersonaType>('universal');
   const [docId, setDocId] = useState<string | null>(null);
   const [dbSync, setDbSync] = useState<'connected' | 'offline' | 'loading'>('offline');
+  const [aiEngine, setAiEngine] = useState<'gemini-3.5-flash' | 'gemini-3.1-pro-preview' | 'gemini-3.1-flash-lite'>('gemini-3.5-flash');
+  
+  // Local WebGPU loading tracking state
+  const [localProgressText, setLocalProgressText] = useState<string | null>(null);
+  const [localProgressPercent, setLocalProgressPercent] = useState<number>(0);
+  const [localActive, setLocalActive] = useState(false);
+
+  // Sync mode states
+  useEffect(() => {
+    setLocalActive(isLocalAiActive());
+    
+    const handleModeChange = () => {
+      setLocalActive(isLocalAiActive());
+    };
+    
+    const handlePromptSuggest = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && typeof customEvent.detail.text === 'string') {
+        setPrompt(customEvent.detail.text);
+      }
+    };
+    
+    window.addEventListener('ai-mode-changed', handleModeChange);
+    window.addEventListener('ai-model-swapped', handleModeChange);
+    window.addEventListener('ai-prompt-suggest', handlePromptSuggest);
+    
+    return () => {
+      window.removeEventListener('ai-mode-changed', handleModeChange);
+      window.removeEventListener('ai-model-swapped', handleModeChange);
+      window.removeEventListener('ai-prompt-suggest', handlePromptSuggest);
+    };
+  }, []);
   
   // File upload state & handlers
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
@@ -260,25 +295,26 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
 
     // Save user's question first
     await saveChatHistory(nextMessages);
+    
+    setLocalProgressText(null);
+    setLocalProgressPercent(0);
 
     try {
-      const response = await fetch('/api/ai/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          context: `Current active view is: ${activeContext}.`,
-          persona: persona,
-          fileData: filePayload
-        })
+      const aiReply = await queryAI({
+        prompt: finalPrompt,
+        context: `Current active view is: ${activeContext}.`,
+        persona: persona,
+        messages: nextMessages,
+        model: aiEngine,
+        onLocalProgress: (progress) => {
+          setLocalProgressText(progress.text);
+          setLocalProgressPercent(Math.floor(progress.progress * 100));
+        }
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to query AI');
-      }
+      // Clear local download loading state once completed
+      setLocalProgressText(null);
 
-      const data = await response.json();
-      const aiReply = data.text || "I was unable to formulate a response.";
       const updatedMessages = [...nextMessages, { role: 'assistant' as const, content: aiReply }];
       
       setMessages(updatedMessages);
@@ -292,6 +328,7 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
         }
       }));
     } catch (err: any) {
+      setLocalProgressText(null);
       const errorMsg = `⚠️ Error occurred: ${err.message || 'Failed to reach AI Backend'}`;
       const updatedMessages = [...nextMessages, { role: 'assistant' as const, content: errorMsg }];
       setMessages(updatedMessages);
@@ -412,7 +449,9 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
           <div>
             <h3 className="text-xs font-black uppercase tracking-widest text-indigo-200">WorkSuite AI</h3>
             <div className="flex items-center gap-1 mt-0.5">
-              <p className="text-[10px] text-indigo-400">Gemini 3.5 Assistant</p>
+              <p className="text-[10px] text-indigo-400">
+                {localActive ? 'Local WebGPU Offline' : 'Gemini 3.5 Assistant'}
+              </p>
               <span className="text-[9px] text-indigo-500 font-bold">•</span>
               {dbSync === 'connected' ? (
                 <div className="flex items-center gap-0.5 text-[9px] text-emerald-400 inline-flex" title="Firestore Connection Active">
@@ -438,6 +477,22 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      {/* Local progress bar banner for file weights loading */}
+      {localProgressText && (
+        <div className="mx-4 my-2.5 p-3.5 rounded-xl bg-slate-900/40 border border-indigo-500/20 text-xs text-white space-y-2 animate-pulse">
+          <div className="flex items-center justify-between text-[11px] font-bold tracking-tight text-indigo-200 uppercase">
+            <span>{localProgressText}</span>
+            <span>{localProgressPercent}%</span>
+          </div>
+          <div className="w-full bg-slate-950/40 rounded-full h-1.5 overflow-hidden border border-slate-900">
+            <div 
+              className="bg-indigo-500 h-full rounded-full transition-all duration-300" 
+              style={{ width: `${localProgressPercent}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
 
       {/* Persona Tabs / Mode Selector */}
       <div className={`px-4 py-2 bg-indigo-950/40 border-b ${themeColors.border} shrink-0 flex flex-col gap-1.5 select-none`}>
@@ -497,6 +552,55 @@ export default function AiAssistant({ activeContext, onSuggestionAdopt, userId }
           >
             <Receipt className="h-3 w-3" />
             <span className="text-[9px]">Finance</span>
+          </button>
+        </div>
+
+        {/* Gemini Intelligence Engine Selector */}
+        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-2 flex items-center gap-1">
+          <Sparkles className="h-2.5 w-2.5 text-indigo-300 shrink-0" />
+          <span>Gemini Brain Intelligence</span>
+        </p>
+        <div className="grid grid-cols-3 gap-1">
+          <button
+            type="button"
+            onClick={() => setAiEngine('gemini-3.5-flash')}
+            className={`py-1 pb-1.5 px-0.5 rounded-lg border text-[10px] font-extrabold flex flex-col items-center justify-center gap-0.5 transition ${
+              aiEngine === 'gemini-3.5-flash' 
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-md' 
+                : 'bg-indigo-900/20 border-indigo-900/40 text-indigo-300 hover:bg-indigo-900/50 hover:text-white'
+            }`}
+            title="General Tasks, summaries, & standard queries (Gemini 3.5 Flash)"
+          >
+            <span className="text-[9px] font-black leading-none">Flash</span>
+            <span className="text-[7.5px] text-indigo-300 font-bold leading-none mt-0.5">General</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAiEngine('gemini-3.1-pro-preview')}
+            className={`py-1 pb-1.5 px-0.5 rounded-lg border text-[10px] font-extrabold flex flex-col items-center justify-center gap-0.5 transition ${
+              aiEngine === 'gemini-3.1-pro-preview' 
+                ? 'bg-rose-600 border-rose-500 text-white shadow-md' 
+                : 'bg-indigo-900/20 border-indigo-900/40 text-indigo-300 hover:bg-indigo-900/50 hover:text-white'
+            }`}
+            title="Deep reasoning, complex mathematical checks, spreadsheets analyzer, & long text drafts (Gemini 3.1 Pro)"
+          >
+            <span className="text-[9px] font-black leading-none">Pro Brain</span>
+            <span className="text-[7.5px] text-indigo-300 font-bold leading-none mt-0.5">Pro Logic</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAiEngine('gemini-3.1-flash-lite')}
+            className={`py-1 pb-1.5 px-0.5 rounded-lg border text-[10px] font-extrabold flex flex-col items-center justify-center gap-0.5 transition ${
+              aiEngine === 'gemini-3.1-flash-lite' 
+                ? 'bg-emerald-600 border-emerald-500 text-white shadow-md' 
+                : 'bg-indigo-900/20 border-indigo-900/40 text-indigo-300 hover:bg-indigo-900/50 hover:text-white'
+            }`}
+            title="Express Speed responses for quick grammar checks & brief inputs (Gemini 3.1 Flash Lite)"
+          >
+            <span className="text-[9px] font-black leading-none">Express</span>
+            <span className="text-[7.5px] text-indigo-300 font-bold leading-none mt-0.5">Lite Speed</span>
           </button>
         </div>
       </div>

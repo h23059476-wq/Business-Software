@@ -13,12 +13,58 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
+      // Register the PWA Service Worker across all environments to allow PWA download and installation.
+      // A "Network-First" fetch strategy is implemented in sw.js to ensure live content is always retrieved first,
+      // avoiding stale cache issues during active development or testing.
+      const forceDisableSW = window.location.search.includes('disable-sw=true');
+
+      if (forceDisableSW) {
+        console.log('WorkSuite: Bypassing PWA Service Worker via disable-sw query parameter. Clearing service-worker registrations and caches...');
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+            for (const registration of registrations) {
+              registration.unregister().then((success) => {
+                if (success) {
+                  console.log('Unregistered service worker successfully:', registration.scope);
+                }
+              });
+            }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then((cacheNames) => {
+            cacheNames.forEach((cacheName) => {
+              caches.delete(cacheName).then(() => {
+                console.log('Cleaned service worker cache:', cacheName);
+              });
+            });
+          });
+        }
+      } else if ('serviceWorker' in navigator) {
+        const registerSW = () => {
           navigator.serviceWorker.register('/sw.js')
-            .then((reg) => console.log('Service Worker registered successfully:', reg.scope))
-            .catch((err) => console.error('Service Worker registration failed:', err));
-        });
+            .then((reg) => {
+              console.log('PWA Service Worker registered successfully:', reg.scope);
+              // Handle updates smoothly
+              reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                if (installingWorker) {
+                  installingWorker.onstatechange = () => {
+                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      console.log('New PWA update available! Reload to check it out.');
+                    }
+                  };
+                }
+              };
+            })
+            .catch((err) => console.error('PWA Service Worker registration failed:', err));
+        };
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+          registerSW();
+        } else {
+          window.addEventListener('load', registerSW);
+        }
       }
     </script>
   </body>

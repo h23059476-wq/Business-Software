@@ -3,10 +3,13 @@ import {
   Building2, Plus, Trash2, Download, Search, Sparkles, RefreshCw, 
   Settings, Save, FileDown, ArrowUpDown, ChevronRight, AlertCircle, Edit2
 } from 'lucide-react';
-import { db, handleFirestoreError } from '../lib/firebase.ts';
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { 
+  db, handleFirestoreError,
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { AccountSummaryData } from '../types.ts';
 import { jsPDF } from 'jspdf';
+import { queryAI } from '../lib/aiService.ts';
 
 interface AccountsSummaryProps {
   userId: string;
@@ -122,24 +125,16 @@ export default function AccountsSummary({ userId }: AccountsSummaryProps) {
     }
   };
 
-  // Autocomplete mock data entries via AI
+  // Autocomplete realistic sample entries via AI
   const handleAiAutoFill = async () => {
     setAiLoading(true);
     setAiError(null);
     try {
-      const res = await fetch('/api/ai/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: "Generate a list of 4 realistic corporate corporate accounts summaries. Each record must have exactly: Serial Number (e.g. S-101), Name of holder, Department of the holder, and Credit numeric dollars count. Return ONLY a valid JSON array of objects representing this list, with keys 'sr', 'name', 'dept', and 'credit' as a numeric value. No other text around the JSON array.",
-          context: "accounts_summary"
-        })
+      const promptText = "Generate a list of 4 realistic corporate accounts summaries. Each record must have exactly: Serial Number (e.g. S-101), Name of holder, Department of the holder, and Credit numeric dollars count. Return ONLY a valid JSON array of objects representing this list, with keys 'sr', 'name', 'dept', and 'credit' as a numeric value. No other text around the JSON array.";
+      const text = await queryAI({
+        prompt: promptText,
+        context: "accounts_summary"
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      // Extract JSON array
-      const text = data.text || '';
       const startIdx = text.indexOf('[');
       const endIdx = text.lastIndexOf(']');
       if (startIdx === -1 || endIdx === -1) {
@@ -164,7 +159,7 @@ export default function AccountsSummary({ userId }: AccountsSummaryProps) {
       }
     } catch (err: any) {
       console.error(err);
-      setAiError(err.message || "Failed to generate mock indices.");
+      setAiError(err.message || "Failed to generate realistic sample accounts.");
     } finally {
       setAiLoading(false);
     }
@@ -357,7 +352,7 @@ export default function AccountsSummary({ userId }: AccountsSummaryProps) {
             ) : (
               <Sparkles className="h-3 w-4" />
             )}
-            <span>AI Generate Mock Entries</span>
+            <span>AI Populate Sample Accounts</span>
           </button>
 
           {/* PDF exporter button */}

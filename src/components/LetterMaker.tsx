@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Mail, FileText, Send, Sparkles, Download, FileDown, Check, 
   Copy, RefreshCw, PenTool, LayoutTemplate, Briefcase, FileCode, Landmark
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import AccountsSummary from './AccountsSummary.tsx';
+import { queryAI } from '../lib/aiService.ts';
 
 interface LetterMakerProps {
   userId: string;
   userDisplayName: string;
+  initialAdoptedText?: string | null;
+  clearAdoptedText?: () => void;
 }
 
 type ModeType = 'writer' | 'accounts';
@@ -57,7 +60,12 @@ const TEMPLATES: LetterTemplate[] = [
   }
 ];
 
-export default function LetterMaker({ userId, userDisplayName }: LetterMakerProps) {
+export default function LetterMaker({ 
+  userId, 
+  userDisplayName,
+  initialAdoptedText,
+  clearAdoptedText
+}: LetterMakerProps) {
   const [activeTab, setActiveTab] = useState<ModeType>('writer');
   
   // Letter state
@@ -72,6 +80,35 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
   // AI polishing state
   const [polishing, setPolishing] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Adopt AI assistant suggestions
+  useEffect(() => {
+    if (initialAdoptedText) {
+      let cleanedText = initialAdoptedText;
+      // Strip markdown code blocks if the AI response wrapped it in ```
+      if (cleanedText.includes('```')) {
+        const matches = cleanedText.match(/```[a-zA-Z]*\n?([\s\S]*?)```/);
+        if (matches && matches[1]) {
+          cleanedText = matches[1];
+        } else {
+          cleanedText = cleanedText.replace(/```/g, '');
+        }
+      }
+      setLetterBody(cleanedText.trim());
+      
+      window.dispatchEvent(new CustomEvent('app-notification', {
+        detail: {
+          title: 'Imported Into Letter Maker',
+          message: 'The content from AI Assistant has been imported into your draft letter.',
+          type: 'success'
+        }
+      }));
+
+      if (clearAdoptedText) {
+        clearAdoptedText();
+      }
+    }
+  }, [initialAdoptedText, clearAdoptedText]);
 
   // Handle template switch
   const selectTemplate = (tpl: LetterTemplate) => {
@@ -199,17 +236,14 @@ export default function LetterMaker({ userId, userDisplayName }: LetterMakerProp
   const handleAiPolish = async () => {
     setPolishing(true);
     try {
-      const res = await fetch('/api/ai/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `Rewrite this corporate letter body paragraph in highly formal, professional enterprise English. Keep formatting and spacing paragraphs natural. Return ONLY the rewritten body text, with no introductory or greeting comments. Here is the text: "${letterBody}"`,
-          context: "letter_polishing"
-        })
+      const promptText = `Rewrite this corporate letter body paragraph in highly formal, professional enterprise English. Keep formatting and spacing paragraphs natural. Return ONLY the rewritten body text, with no introductory or greeting comments. Here is the text: "${letterBody}"`;
+      const aiResponse = await queryAI({
+        prompt: promptText,
+        context: "letter_polishing"
       });
-      const data = await res.json();
-      if (data.text) {
-        setLetterBody(data.text.trim());
+
+      if (aiResponse) {
+        setLetterBody(aiResponse.trim());
         window.dispatchEvent(new CustomEvent('app-notification', {
           detail: {
             title: 'Letter Polished by AI',

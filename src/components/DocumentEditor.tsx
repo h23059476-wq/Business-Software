@@ -6,8 +6,10 @@ import {
   ChevronDown, FolderOpen, Search
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase.ts';
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { 
+  db, auth, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { DocumentData } from '../types.ts';
 import PdfPreviewModal from './PdfPreviewModal.tsx';
 
@@ -89,16 +91,62 @@ export default function DocumentEditor({
 
   // Handle outside adoption of AI response text
   useEffect(() => {
-    if (initialAdoptedText && activeDoc && editorRef.current) {
-      // Append or insert at caret
-      editorRef.current.focus();
-      // Simple insertion of AI text
-      const cleanText = initialAdoptedText.replace(/#/g, ''); // strip markdown headers
-      document.execCommand('insertHTML', false, `<div>${cleanText.replace(/\n/g, '<br/>')}</div>`);
-      handleEditorInput();
-      if (clearAdoptedText) clearAdoptedText();
-    }
-  }, [initialAdoptedText, activeDoc]);
+    if (!initialAdoptedText) return;
+
+    const handleAdoption = async () => {
+      let targetDocObj = activeDoc;
+      
+      // Auto-initialize activeDoc if none is loaded
+      if (!targetDocObj) {
+        if (documents.length > 0) {
+          const sorted = [...documents].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
+          setActiveDoc(sorted[0]);
+          targetDocObj = sorted[0];
+        } else {
+          // No current document exists, auto-create one first
+          await createNewDoc();
+          // The effect will run again once activeDoc is updated in state
+          return;
+        }
+      }
+
+      if (targetDocObj && editorRef.current) {
+        editorRef.current.focus();
+        const cleanText = initialAdoptedText.replace(/#/g, ''); // strip markdown header styling hashes
+        const htmlToInsert = `<div>${cleanText.replace(/\n/g, '<br/>')}</div>`;
+        
+        let success = false;
+        try {
+          success = document.execCommand('insertHTML', false, htmlToInsert);
+        } catch (err) {
+          console.warn("execCommand not available/failed:", err);
+        }
+
+        // Cross-platform bulletproof fallback if execCommand was blocked or failed
+        if (!success || !editorRef.current.innerHTML.includes(cleanText.substring(0, Math.min(5, cleanText.length)))) {
+          // Fallback to direct DOM manipulation
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = htmlToInsert;
+          
+          // Try inserting at selection/caret
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0 && editorRef.current.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(wrapper);
+          } else {
+            // Otherwise, append to current content directly
+            editorRef.current.appendChild(wrapper);
+          }
+        }
+
+        handleEditorInput();
+        if (clearAdoptedText) clearAdoptedText();
+      }
+    };
+
+    handleAdoption();
+  }, [initialAdoptedText, activeDoc, documents]);
 
   // Keep track of active document changes
   useEffect(() => {

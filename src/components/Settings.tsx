@@ -4,8 +4,7 @@ import {
   DollarSign, Activity, Settings as SettingsIcon, Award, UserCheck 
 } from 'lucide-react';
 import { updateProfile, signOut } from 'firebase/auth';
-import { auth, db } from '../lib/firebase.ts';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { auth, db, collection, query, where, getDocs } from '../lib/firebase.ts';
 
 interface SettingsProps {
   userId: string;

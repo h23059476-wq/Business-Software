@@ -5,8 +5,10 @@ import {
   ChevronDown, FolderOpen
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { 
+  db, handleFirestoreError, OperationType,
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot
+} from '../lib/firebase.ts';
 import { SpreadsheetData } from '../types.ts';
 import PdfPreviewModal from './PdfPreviewModal.tsx';
 
