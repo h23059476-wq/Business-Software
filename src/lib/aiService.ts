@@ -436,7 +436,14 @@ export async function queryAI(options: {
   } else {
     // RUN CLOUD CLUSTERED GEMINI-3.5 API
     const userApiKey = localStorage.getItem('worksuite_custom_gemini_api_key') || undefined;
-    const res = await fetch('/api/ai/assistant', {
+    
+    // Determine the API base URL. If we are running inside Electron or loaded via file://, 
+    // we must direct API calls explicitly to localhost:3000 where our Express server resides.
+    const isElectron = typeof window !== 'undefined' && ((window as any).electronAPI || window.navigator.userAgent.includes('Electron'));
+    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+    const apiTargetUrl = (isElectron || isFileProtocol) ? 'http://localhost:3000/api/ai/assistant' : '/api/ai/assistant';
+
+    const res = await fetch(apiTargetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

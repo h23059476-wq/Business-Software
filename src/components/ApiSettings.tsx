@@ -169,7 +169,11 @@ export default function ApiSettings() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/ai/assistant', {
+      const isElectron = typeof window !== 'undefined' && ((window as any).electronAPI || window.navigator.userAgent.includes('Electron'));
+      const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+      const apiTargetUrl = (isElectron || isFileProtocol) ? 'http://localhost:3000/api/ai/assistant' : '/api/ai/assistant';
+
+      const res = await fetch(apiTargetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

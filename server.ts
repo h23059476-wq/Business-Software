@@ -124,6 +124,18 @@ async function startServer() {
 
   app.use(express.json());
 
+  // CORS middleware for cross-origin requests (e.g. from file:// origins in packaged desktop app)
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "X-Requested-With,Content-Type,x-gemini-api-key");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // Health check endpoint for Electron/embedded runtime checks
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });

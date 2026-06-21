@@ -85,6 +85,7 @@ function createWindow() {
     height: 800,
     title: "WorkSuite Office Workstation",
     icon: path.join(__dirname, 'icons/icon.png'), // standard Windows Icon file
+    frame: false, // frameless window for premium, custom-styled title bar
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -105,6 +106,32 @@ function createWindow() {
 
 // IPC Handlers
 ipcMain.handle('ping', () => 'pong');
+
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.on('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow ? mainWindow.isMaximized() : false;
+});
 
 app.whenReady().then(() => {
   // Always boot background server first if packaged

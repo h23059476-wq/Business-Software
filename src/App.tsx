@@ -8,7 +8,8 @@ import {
   LogOut, Sparkles, MessageSquare, Loader2, RefreshCw, Smartphone, 
   Computer, ChevronRight, Lock, Eye, EyeOff, UserCheck, AlertTriangle,
   Mail, Columns, ExternalLink, Columns2, Search, Sun, Moon,
-  Bell, Trash, Info, X, Check, Save, BookOpen, Key, Cpu
+  Bell, Trash, Info, X, Check, Save, BookOpen, Key, Cpu,
+  Minus, Square, Layers
 } from 'lucide-react';
 import { auth, googleAuthProvider } from './lib/firebase.ts';
 
@@ -246,6 +247,26 @@ export default function App() {
   const [secondaryTab, setSecondaryTab] = useState<TabType>('spreadsheet');
   const [standaloneMode, setStandaloneMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMaximizedState, setIsMaximizedState] = useState(false);
+
+  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI !== undefined;
+
+  // Sync maximization state for custom Electron title bar controls
+  useEffect(() => {
+    if (isElectron) {
+      const checkMaximized = async () => {
+        try {
+          const res = await (window as any).electronAPI.isMaximized();
+          setIsMaximizedState(res);
+        } catch (e) {
+          // ignore
+        }
+      };
+      checkMaximized();
+      window.addEventListener('resize', checkMaximized);
+      return () => window.removeEventListener('resize', checkMaximized);
+    }
+  }, [isElectron]);
 
   // Detect mobile viewport on mount and auto-collapse panels
   useEffect(() => {
@@ -922,7 +943,7 @@ export default function App() {
   return (
     <div className="h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden transition-colors duration-200" id="worksuite-workstation-main">
       {/* Sidebar Navigation */}
-      {!standaloneMode && sidebarOpen && (
+      {sidebarOpen && (
         <>
           {/* Mobile Overlay Backdrop */}
           <div 
@@ -999,21 +1020,24 @@ export default function App() {
       {/* Main viewport area */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Workspace Toolbar Header */}
-        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-3 sm:px-6 md:px-8 gap-2 shrink-0 z-10 transition-colors duration-200">
-          <div className="flex items-center gap-2">
-            {!standaloneMode && (
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={`p-2 rounded-lg transition border cursor-pointer flex items-center justify-center ${
-                  sidebarOpen 
-                    ? 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900' 
-                    : 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 font-bold'
-                }`}
-                title={sidebarOpen ? "Hide Left Sidebar" : "Show Left Sidebar"}
-              >
-                <Layout className="h-4 w-4" />
-              </button>
-            )}
+        <header 
+          className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-3 sm:px-6 md:px-8 gap-2 shrink-0 z-10 transition-colors duration-200 relative select-none"
+          style={isElectron ? { WebkitAppRegion: 'drag' } as React.CSSProperties : undefined}
+        >
+          {/* Main interactive wrapper with no-drag in Electron */}
+          <div className="flex items-center justify-between w-full h-full" style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
+            <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className={`p-2 rounded-lg transition border cursor-pointer flex items-center justify-center ${
+                sidebarOpen 
+                  ? 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900' 
+                  : 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 font-bold'
+              }`}
+              title={sidebarOpen ? "Hide Left Sidebar" : "Show Left Sidebar"}
+            >
+              <Layout className="h-4 w-4" />
+            </button>
             <div className="flex items-center gap-1.5 min-w-0">
               <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none hidden lg:block select-none">Active Tool:</h2>
               <span className="text-[11px] sm:text-xs font-extrabold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 sm:px-2.5 py-1 rounded-full border border-indigo-100/60 dark:border-indigo-900/40 uppercase tracking-wider truncate">
@@ -1264,8 +1288,42 @@ export default function App() {
               <MessageSquare className="h-4 w-4 shrink-0" />
               <span className="hidden md:inline">AI Assistant</span>
             </button>
+
+            {isElectron && (
+              <>
+                <div className="h-6 w-[1.5px] bg-slate-200 dark:bg-slate-800 mx-2"></div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => (window as any).electronAPI.minimize()}
+                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded transition cursor-pointer flex items-center justify-center h-8 w-8"
+                    title="Minimize Application"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => (window as any).electronAPI.maximize()}
+                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded transition cursor-pointer flex items-center justify-center h-8 w-8"
+                    title={isMaximizedState ? "Restore Window Size" : "Maximize Window"}
+                  >
+                    {isMaximizedState ? (
+                      <Layers className="h-3.5 w-3.5" />
+                    ) : (
+                      <Square className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => (window as any).electronAPI.close()}
+                    className="p-1.5 hover:bg-red-500 hover:text-white text-slate-500 dark:text-slate-400 rounded transition cursor-pointer flex items-center justify-center h-8 w-8"
+                    title="Close Application"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        </header>
+        </div>
+      </header>
 
         {/* View contents layout (with slide-in side AI assistant) */}
         <div className="flex-1 flex min-h-0 relative">
